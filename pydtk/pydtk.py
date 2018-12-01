@@ -27,28 +27,34 @@ import os
 import datetime
 from .utils.utilsfunc import nextpow2
 from .utils.utilsfunc import subwindowcoor
-#from .utils.utils import genspectralimits
-
+# from .utils.utils import genspectralimits
 
 
 """
 Define Module Exceptions
 """
+
+
 class ObjectNotAnImage(Exception):
     '''
     TBC
     '''
     pass
+
+
 class LenTooShort(Exception):
     '''
     TBC
     '''
     pass
+
+
 class ObjectNotAnString(Exception):
     '''
     TBC
     '''
     pass
+
 
 def genspectralimits(image, x0, y0, width, angle=1.518):
     """
@@ -73,6 +79,7 @@ class Image(object):
     '''
     Need to write docstring for Image
     '''
+
     def __init__(self, filename=None, ext=0, slice=0, xps=0, xos=0, yps=0, yos=0, **option):
         """
         Initializes Image instance.
@@ -122,7 +129,7 @@ class Image(object):
         They correspond to fix pattern noise
         """
 
-        if isinstance(filename, Image):    #if filename is an instance of Image... Copy attributes
+        if isinstance(filename, Image):  # if filename is an instance of Image... Copy attributes
             self.ext = filename.ext
             self.filename = filename.filename
             self.header = filename.header
@@ -138,7 +145,7 @@ class Image(object):
             self.yps = filename.yps
             self.yos = filename.yos
 
-        elif filename is None:    #if filename is None => create a syntetic image
+        elif filename is None:  # if filename is None => create a syntetic image
             self.ext = 0
             self.filename = 'Simulated'
             self.header = None
@@ -149,184 +156,170 @@ class Image(object):
             self.yi = 0
             self.data = np.zeros((self.xf, self.yf))
             self.shape = (self.xf, self.yf)
-            #check CF, if not given, defaul to 2 [e/ADU]
+            # check CF, if not given, defaul to 2 [e/ADU]
             cf = option.get('CF', 2.0)
-            #check if Flux (photons/sec) different from zero
+            # check if Flux (photons/sec) different from zero
             flux = option.get('FLUX', 0)
-            #check if DIT (sec) diferent from zero
+            # check if DIT (sec) diferent from zero
             dit = option.get('DIT', 0)
-            #check if RON (e) diferent from zero
+            # check if RON (e) diferent from zero
             ron = option.get('RON', 3)
-            #check if BIAS (ADU) diferent from zero
+            # check if BIAS (ADU) diferent from zero
             bias = option.get('BIAS', 1000)
 
-            #generate an array of NROWSxNCOLS and fill it with (flux/cf) +/- sqrt(flux/cf)
-            #if DIT>0 and FLUX>0
+            # generate an array of NROWSxNCOLS and fill it with (flux/cf) +/- sqrt(flux/cf)
+            # if DIT>0 and FLUX>0
             if (dit > 0 and flux > 0):
-                signal_amplitud = dit*flux   #in electrons
-                shotnoise_amplitud = np.sqrt(signal_amplitud) #in electrons
-                #Generate array filled with "signal"
+                signal_amplitud = dit*flux  # in electrons
+                shotnoise_amplitud = np.sqrt(signal_amplitud)  # in electrons
+                # Generate array filled with "signal"
                 signal = np.empty((self.xf, self.yf))
                 signal.fill(signal_amplitud)
-                signal = signal/cf  #to convert to ADUs
-                self.data = signal.copy()       #NEW
+                signal = signal/cf  # to convert to ADUs
+                self.data = signal.copy()  # NEW
 
-                #generate array filled with "shotnoise"
-                #shotnoise = np.random.normal(signal_amplitud, shotnoise_amplitud, self.xf*self.yf)
-                #in electrons
-                #shotnoise = shotnoise - signal_amplitud  # Leave only the shotnoise
-                shotnoise = np.random.normal(0, shotnoise_amplitud/cf, self.xf*self.yf) #in ADUs
+                # generate array filled with "shotnoise"
+                # shotnoise = np.random.normal(signal_amplitud, shotnoise_amplitud, self.xf*self.yf)
+                # in electrons
+                # shotnoise = shotnoise - signal_amplitud  # Leave only the shotnoise
+                shotnoise = np.random.normal(0, shotnoise_amplitud/cf, self.xf*self.yf)  # in ADUs
                 shotnoise = shotnoise.reshape((self.xf, self.yf))
 
                 self.data = self.data + shotnoise
 
-            #Initialize shadow and FPN matrix with all elements in 1.0
+            # Initialize shadow and FPN matrix with all elements in 1.0
             shadow_coef = np.empty((self.xf, self.yf))
             shadow_coef.fill(1.0)
 
             FPNTotal = np.empty((self.xf, self.yf))
-            FPNTotal.fill(1.0)  #initialize FPNTotal with 1.0
+            FPNTotal.fill(1.0)  # initialize FPNTotal with 1.0
 
-
-
-            #Add shadow to image if there is shadow in row and/or columns
-            #check if SHADOW!=0, if not, shadow is a percentage shadow factor
+            # Add shadow to image if there is shadow in row and/or columns
+            # check if SHADOW!=0, if not, shadow is a percentage shadow factor
             shadowr = option.get('SHADOWR', 0)
             shadowc = option.get('SHADOWC', 0)
             if (shadowr != 0 or shadowc != 0) and (dit > 0 and flux > 0):
-                factorr = shadowr/100.0    #express shadow in porcentage
+                factorr = shadowr/100.0  # express shadow in porcentage
                 factorc = shadowc/100.0
-                #generate the row multiplication coeficients using a sine [0..1]
+                # generate the row multiplication coeficients using a sine [0..1]
                 rowshadow = (np.sin(np.linspace(0, np.pi, self.xf)).reshape((self.xf, 1)))*factorr
-                #colshadow = np.sin(np.linspace(0,np.pi,self.yf))*factorc  #column coeficients multiplied by sine[0..1]
+                # colshadow = np.sin(np.linspace(0,np.pi,self.yf))*factorc  #column coeficients multiplied by sine[0..1]
                 colshadow = (np.sin(np.linspace(0, np.pi, self.yf))).reshape(1, self.yf)*factorc
 
-                #generate the matrix of multiplication coeficients
+                # generate the matrix of multiplication coeficients
                 shadow_coef = rowshadow + colshadow
 
-                #shadow_shnoise_coef = np.sqrt(shadow_coef)
+                # shadow_shnoise_coef = np.sqrt(shadow_coef)
 
-                #self.data =  signal*(1-factorr-factorc) + signal * shadow_coef
-                #data signal modulated by shadow
+                # self.data =  signal*(1-factorr-factorc) + signal * shadow_coef
+                # data signal modulated by shadow
                 self.data = self.data*(1-factorr-factorc) + self.data * shadow_coef
-                #self.data =  signal * (1 - factorr -factorc + shadow_coef)
+                # self.data =  signal * (1 - factorr -factorc + shadow_coef)
 
-
-            #Add FPN if the FPN matrix were defined for pixel, column or row, or for all of them
-            #check if FPNpixel not empty, must be same dimension as self.data
+            # Add FPN if the FPN matrix were defined for pixel, column or row, or for all of them
+            # check if FPNpixel not empty, must be same dimension as self.data
             FPNpixel = option.get('FPN_P', None)
             if isinstance(FPNpixel, np.ndarray):
-                #check if dimensions of FPN array are correct
+                # check if dimensions of FPN array are correct
                 if self.shape == FPNpixel.shape:
                     self.data = self.data * FPNpixel
-                    FPNTotal = FPNTotal * FPNpixel    #TBC
+                    FPNTotal = FPNTotal * FPNpixel  # TBC
                 else:
                     print("Error: not same dimensions..")
 
-            #check if FPNcol not empty, must be vector of dim col
+            # check if FPNcol not empty, must be vector of dim col
             FPNcol = option.get('FPN_C', None)
             if isinstance(FPNcol, np.ndarray):
                 if self.shape[1] == len(FPNcol):
                     self.data = self.data * FPNcol
-                    FPNTotal = FPNTotal * FPNcol      #TBC
+                    FPNTotal = FPNTotal * FPNcol  # TBC
                 else:
                     print("Error: not same dimensions..")
 
-            #check if FPNrow not empty, must be vector of dim row
+            # check if FPNrow not empty, must be vector of dim row
             FPNrow = option.get('FPN_R', None)
             if isinstance(FPNrow, np.ndarray):
                 if self.shape[0] == len(FPNrow):
                     FPNrow = FPNrow.reshape((self.shape[0], 1))
                     self.data = self.data * FPNrow
-                    FPNTotal = FPNTotal * FPNrow       #TBC
+                    FPNTotal = FPNTotal * FPNrow  # TBC
                 else:
                     print("Error: not same dimensions..")
 
-
-
-            #if DIT>0 => multiply the shadow coef by the total FPN and then take the sqrt to
-            #multiply this by the original shot noise
+            # if DIT>0 => multiply the shadow coef by the total FPN and then take the sqrt to
+            # multiply this by the original shot noise
             if dit > 0 and shadowr > 0 and shadowc > 0:
-                totalshotcoef = np.sqrt(np.abs((1 - factorr -factorc + shadow_coef) * FPNTotal))
+                totalshotcoef = np.sqrt(np.abs((1 - factorr - factorc + shadow_coef) * FPNTotal))
                 self.data = self.data + totalshotcoef * shotnoise
             elif dit > 0 and shadowr == 0 and shadowc == 0:
-                #totalshotcoef = np.sqrt(FPNTotal)
-                #self.data = signal + totalshotcoef*shotnoise           #ORIGINAL
-                self.data = self.data #+ shotnoise #totalshotcoef*shotnoise         #NEW
+                # totalshotcoef = np.sqrt(FPNTotal)
+                # self.data = signal + totalshotcoef*shotnoise           #ORIGINAL
+                self.data = self.data  # + shotnoise #totalshotcoef*shotnoise         #NEW
 
-
-
-
-            #Finally add bias level  and RON here, not before
-            #data = (np.random.standard_normal((self.xf,self.yf))*ron/cf) + bias
-            data = np.random.normal(bias, ron/cf, self.xf*self.yf)  #in ADUs
+            # Finally add bias level  and RON here, not before
+            # data = (np.random.standard_normal((self.xf,self.yf))*ron/cf) + bias
+            data = np.random.normal(bias, ron/cf, self.xf*self.yf)  # in ADUs
             data = data.reshape((self.xf, self.yf))
             self.data = data + self.data
 
-            #check if detector values are less or equal than 65535
+            # check if detector values are less or equal than 65535
             self.data = self.data.clip(min=0, max=65535)
             self.xps = 0
             self.xos = 0
             self.yps = 0
             self.yos = 0
 
-
-
-
-        #if filename exist then read data
+        # if filename exist then read data
         elif filename != None:
-            #Read image data
-            #datos,hrd=pyfits.getdata(PATH2IMAGES+filename,chip,header=True)
-            #print filename
-            datos, hrd = pyfits.getdata(filename, ext, header=True)  #load data and header information
+            # Read image data
+            # datos,hrd=pyfits.getdata(PATH2IMAGES+filename,chip,header=True)
+            # print filename
+            # load data and header information
+            datos, hrd = pyfits.getdata(filename, ext, header=True)
             self.ext = ext
             self.header = hrd
-            #check data is not cube
-            if  np.size(datos.shape) == 2:
+            # check data is not cube
+            if np.size(datos.shape) == 2:
                 self.data = datos.astype('float32')
-                #self.data = datos
+                # self.data = datos
                 self.xf = datos.shape[0]
                 self.yf = datos.shape[1]
                 self.slice = None
 
             elif np.size(datos.shape) == 3 and datos.shape[0] == 1:
                 self.data = datos[0, :, :].astype('float32')
-                #self.data = datos[0,:,:]
+                # self.data = datos[0,:,:]
                 self.xf = datos.shape[1]
                 self.yf = datos.shape[2]
                 self.slice = 0
             elif np.size(datos.shape) == 3 and slice != None and slice < datos.shape[0]:
                 self.data = datos[slice, :, :].astype('float32')
-                #self.data = datos[slice,:,:]
+                # self.data = datos[slice,:,:]
                 self.xf = datos.shape[1]
                 self.yf = datos.shape[2]
                 self.slice = slice
             """
             elif size(datos.shape) ==3 and datos.shape[0]>1 and slice==None:  #Load all the slices
                 self.data = datos[:,:,:].astype('float32')
-                #self.data = datos[slice,:,:]
+                # self.data = datos[slice,:,:]
                 self.xf = datos.shape[1]
                 self.yf = datos.shape[2]
                 self.zf = datos.shape[0]
                 self.slice = slice
             """
 
-
-
             self.filename = filename
             self.xi = 0
             self.yi = 0
-            #self.shape = self.data.shape
+            # self.shape = self.data.shape
             self.shape = (self.xf, self.yf)
             self.xps = xps
             self.xos = xos
             self.yps = yps
             self.yos = yos
 
-
             if option.get('NAME', False):
                 print(("Loading %s...") % filename)
-
 
     def findheaderkeyword(self, wildcard):
         """
@@ -340,7 +333,6 @@ class Image(object):
             if key[0].find(wildcard) != -1:
                 print('%s : %s /%s' % (key[0], key[1], key[2]))
 
-
     def findheadercomment(self, wildcard):
         """
         Print out all the headers that have the wild card in the comment
@@ -353,7 +345,6 @@ class Image(object):
             if key[2].find(wildcard) != -1:
                 print('%s : %s /%s' % (key[0], key[1], key[2]))
 
-
     def transpose(self):
         """
         Transpose data array
@@ -365,7 +356,6 @@ class Image(object):
         self.xf = self.data.shape[0]
         self.yf = self.data.shape[1]
         self.shape = (self.xf, self.yf)
-
 
     def rot(self, angle=90):
         """
@@ -410,8 +400,6 @@ class Image(object):
         """
         self.data = np.flipud(self.data)
 
-
-
     def filenameinfo(self, **options):
         """
         Syntax:
@@ -430,14 +418,13 @@ class Image(object):
             print(("xi: %d, xf: %d") % (self.xi, self.xf))
             print(("yi: %d, yf: %d") % (self.yi, self.yf))
 
-
     def __getitem__(self, key):
         """
         This methods return the pixel value associated with position key[0],key[1]
         """
 
         try:
-            #return self.data[(key[0],key[1])]
+            # return self.data[(key[0],key[1])]
             return self.data[(key[0], key[1])]
         except IndexError:
             print('IndexError: Index out of range')
@@ -487,7 +474,6 @@ class Image(object):
         im.shape = (im.xf, im.yf)
         return im
 
-
     def __add__(self, param):
         """
         Syntax:
@@ -496,21 +482,31 @@ class Image(object):
 
         Redifine the '+' operation for 2 images or one image and one number
         """
-        #if self and param are Images
+        # if self and param are Images
         if isinstance(self, Image) and isinstance(param, Image):
             a = self.data
             b = param.data
             im = Image(self)
             im.filename = self.filename+'+'+param.filename
-        #if self is Image and param is a number
-        elif isinstance(self, Image) and isinstance(param, (int, float, np.float32)):
+        # if self is Image and param is a number or an ndarray
+        elif isinstance(self, Image) and isinstance(param, (int, float, np.float32, np.dnarray)):
             a = self.data
             b = param
-            im = Image(self)  #create empty image container
+            im = Image(self)  # create empty image container
             im.filename = self.filename+'+'+str(param)
-        #perform operation
+        elif isinstance(self, Image) and isinstance(param,  np.ndarray):
+            a = self.data
+            im = Image(self)
+            b = param
+            if b.ndim == 1:
+                if b.shape[0] == im.shape[0]:
+                    b = b.reshape(b.shape[0], 1)
+                elif b.shape[0] == im.shape[1]:
+                    b = b.reshape(1, b.shape[0])
+
+        # perform operation
         im.data = a + b
-        #im.filename=''
+        # im.filename=''
         return im
 
     def __sub__(self, param):
@@ -532,8 +528,17 @@ class Image(object):
             b = param
             im = Image(self)
             im.filename = self.filename+'-'+str(param)
+        elif isinstance(self, Image) and isinstance(param,  np.ndarray):
+            a = self.data
+            im = Image(self)
+            b = param
+            if b.ndim == 1:
+                if b.shape[0] == im.shape[0]:
+                    b = b.reshape(b.shape[0], 1)
+                elif b.shape[0] == im.shape[1]:
+                    b = b.reshape(1, b.shape[0])
         im.data = a - b
-        #im.filename=''
+        # im.filename=''
         return im
 
     def __mul__(self, param):
@@ -555,12 +560,22 @@ class Image(object):
             b = param
             im = Image(self)
             im.filename = '('+self.filename+'*'+str(param)+')'
+        elif isinstance(self, Image) and isinstance(param,  np.ndarray):
+            a = self.data
+            im = Image(self)
+            b = param
+            if b.ndim == 1:
+                if b.shape[0] == im.shape[0]:
+                    b = b.reshape(b.shape[0], 1)
+                elif b.shape[0] == im.shape[1]:
+                    b = b.reshape(1, b.shape[0])
+
         im.data = a*b
-        #im.filename=''
+        # im.filename=''
         return im
 
     def __truediv__(self, param):
-    #def __div__(self,param):
+        # def __div__(self,param):
         """
         Syntax:
         a = b/c
@@ -569,26 +584,34 @@ class Image(object):
         Redifine the '/' operation for 2 images or one image and one number
         Note: if the result  of the division is  inf or -inf or nan, then replace those values by 0.0
         """
-        #both images
+        # both images
         if isinstance(self, Image) and isinstance(param, Image):
             a = self.data
             b = param.data
             im = Image(self)
             im.filename = '('+self.filename+'/'+param.filename+')'
-        #image and integer or float
+        # image and integer or float
         elif isinstance(self, Image) and isinstance(param, (int, float, np.float32)):
             a = self.data
             b = param
             im = Image(self)
             im.filename = '('+self.filename+'/'+str(param)+')'
-        #if divisor has 0, then replace 'inf' or -inf or nan  by 0.0
+        elif isinstance(self, Image) and isinstance(param,  np.ndarray):
+            a = self.data
+            im = Image(self)
+            b = param
+            if b.ndim == 1:
+                if b.shape[0] == im.shape[0]:
+                    b = b.reshape(b.shape[0], 1)
+                elif b.shape[0] == im.shape[1]:
+                    b = b.reshape(1, b.shape[0])
+
+        # if divisor has 0, then replace 'inf' or -inf or nan  by 0.0
         with np.errstate(divide='ignore', invalid='ignore'):
             im.data = a/b
         im.data[np.isinf(im.data) | np.isneginf(im.data) | np.isnan(im.data)] = 0.0
 
-
         return im
-
 
     def medianfilt(self, kernel_size=3):
         """
@@ -596,62 +619,63 @@ class Image(object):
 
         """
 
-        im = Image(self)    #create empty image container
+        im = Image(self)  # create empty image container
         im.filename = self.filename
         im.data = self.data[:, :].copy()
         im.data = signal.medfilt2d(im.data, kernel_size)
         return im
 
 
-
-    def mean(self, *coor):
+# TODO :add **kargs to compute variance on one axis
+    def mean(self, *coor, **kargs):
         """
         Syntax:
         im.mean(xi,xf,yi,yf)
 
         Computes the mean value for the image. If no coordinates are specified, the full image is used
         """
+        axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
-        return np.mean(self[Xi:Xf, Yi:Yf], axis=None)
+        return np.mean(self[Xi:Xf, Yi:Yf], axis=axis)
 
-    def median(self, *coor):
+# TODO :add **kargs to compute variance on one axis
+    def median(self, *coor, **kargs):
         """
         Syntax:
         im.median(xi,xf,yi,yf)
 
         Computes the median value for the image. If no coordinates are specified, the full image is used
         """
+        axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
-        return np.median(self[Xi:Xf, Yi:Yf], axis=None)
+        return np.median(self[Xi:Xf, Yi:Yf], axis=axis)
+# TODO :add **kargs to compute variance on one axis
 
-    def var(self, *coor):
+    def var(self, *coor, **kargs):
         """
         Syntax:
         im.var(xi,xf,yi,yf)
 
         Computes the variance for the image. If no coordinates are specified, the full image is used
         """
-
+        axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
-        return np.var(self[Xi:Xf, Yi:Yf], axis=None)
+        return np.var(self[Xi:Xf, Yi:Yf], axis=axis)
 
-
-
-    def std(self, *coor):
+    def std(self, *coor, **kargs):
         """
         Syntax:
         im.var(xi,xf,yi,yf)
 
         Computes the standard deviation value for the image. If no coordenates are specified, the full image is used
         """
+        axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
-        return np.std(self[Xi:Xf, Yi:Yf], axis=None)
-
-
+        return np.std(self[Xi:Xf, Yi:Yf], axis=axis)
 
     def mask(self, FACTOR=3.0, *coor):
         """
@@ -667,9 +691,6 @@ class Image(object):
         imstd = self.std(*coor)
         self.data = np.ma.masked_outside(self.data, immean-FACTOR*imstd, immean+FACTOR*imstd)
 
-
-
-
     def save(self, filename):
         """
         Save image in FITS format, and copy the header from the
@@ -678,10 +699,8 @@ class Image(object):
         im.save('filename.fits')
         """
         hdu = pyfits.PrimaryHDU(self.data.astype(np.uint16), header=self.header)
-        #hdu.header=self.header
+        # hdu.header=self.header
         hdu.writeto(filename)
-
-
 
     def display(self, *window, **kargs):
         """
@@ -707,7 +726,7 @@ class Image(object):
         meanval = self.data[Xi:Xf, Yi:Yf].mean()
         stddev = self.data[Xi:Xf, Yi:Yf].std()
 
-        print(meanval, stddev)  #DEBUG
+        print(meanval, stddev)  # DEBUG
 
         if (meanval-stddev) > 0:
             lowercut = meanval - stddev
@@ -718,7 +737,7 @@ class Image(object):
             uppercut = meanval + stddev
         else:
             uppercut = 65535
-        #TODO Check min is greater than 0
+        # TODO Check min is greater than 0
         hsize = kargs.get('hsize', 8)
         vsize = kargs.get('vsize', 8)
         vmin = kargs.get('vmin', lowercut)
@@ -731,21 +750,21 @@ class Image(object):
         elif cmap == 'gray':
             cmap = plt.get_cmap('gray')
 
-
-        #clf()
+        # clf()
         plt.figure(figsize=(vsize, hsize))
         plt.title(self.filename)
 
-        plt.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax, interpolation='nearest', cmap=cmap, origin='lower')
+        plt.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax,
+                   interpolation='nearest', cmap=cmap, origin='lower')
 
         print(("Cut levels=%7.1f and %7.1f") % (vmin, vmax))
 
         plt.xlabel('Ycoor')
         plt.ylabel('Xcoor')
         if kargs.get('colorbar', True):
-            plt.colorbar()   #plt.colorbar()
+            plt.colorbar()  # plt.colorbar()
 
-        plt.show()            #plt.show()
+        plt.show()  # plt.show()
 
     def hist(self, *window, **kargs):
         """
@@ -777,9 +796,9 @@ class Image(object):
 
         else:
             plt.clf()
-            plt.hist(self.data[Xi:Xf, Yi:Yf].flatten(), bins=BINS, log=logscale, range=(MIN, MAX), cumulative=CUMULATIVE)
+            plt.hist(self.data[Xi:Xf, Yi:Yf].flatten(), bins=BINS,
+                     log=logscale, range=(MIN, MAX), cumulative=CUMULATIVE)
             plt.show()
-
 
     def rowstacking(self, *xcoor, **option):
         """
@@ -790,7 +809,6 @@ class Image(object):
         190 ADUs till 250 ADUs
 
         """
-
 
         x1, x2 = self.get_xcoor(*xcoor)
 
@@ -807,7 +825,6 @@ class Image(object):
         plt.ylim(ymin, ymax)
 
         plt.show()
-
 
     def columnstacking(self, *ycoor, **option):
         """
@@ -833,7 +850,6 @@ class Image(object):
         ymin = option.get('MIN', self.data.min())
         plt.ylim(ymin, ymax)
 
-
         plt.show()
 
     def get_xcoor(self, *coor):
@@ -851,7 +867,7 @@ class Image(object):
             Xi = coor[0]
             Xf = coor[1]
 
-        #TODO: check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
+        # TODO: check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
         #      than self.xf and self.yf
         return Xi, Xf
 
@@ -870,10 +886,9 @@ class Image(object):
             Yi = coor[0]
             Yf = coor[1]
 
-        #TODO: check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
+        # TODO: check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
         #      than self.xf and self.yf
         return Yi, Yf
-
 
     def get_windowcoor(self, *coor):
         """
@@ -882,33 +897,33 @@ class Image(object):
 
         """
 
-        if not coor:      #No tuple => use full chip
+        if not coor:  # No tuple => use full chip
             Xi = self.xi
             Xf = self.xf
             Yi = self.yi
             Yf = self.yf
-        elif len(coor) == 1:     #Only one coordinate => assign to Xi
+        elif len(coor) == 1:  # Only one coordinate => assign to Xi
             Xi = coor[0]
             Xf = self.xf
             Yi = self.yi
             Yf = self.yf
-        elif len(coor) == 2:     #Two coordinates => assign to Xi, Xf
+        elif len(coor) == 2:  # Two coordinates => assign to Xi, Xf
             Xi = coor[0]
             Xf = coor[1]
             Yi = self.yi
             Yf = self.yf
-        elif len(coor) == 3:     #Three coordinates => assign to Xi, Xf, Yi
+        elif len(coor) == 3:  # Three coordinates => assign to Xi, Xf, Yi
             Xi = coor[0]
             Xf = coor[1]
             Yi = coor[2]
             Yf = self.yf
-        elif len(coor) == 4:     #Four coordinates => assign to Xi, Xf, Yi, Yf
+        elif len(coor) == 4:  # Four coordinates => assign to Xi, Xf, Yi, Yf
             Xi = coor[0]
             Xf = coor[1]
             Yi = coor[2]
             Yf = coor[3]
 
-        #check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
+        # check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
         # than self.xf and self.yf
         if Xi < self.xi or Xi > self.xf:
             Xi = self.xi
@@ -923,10 +938,7 @@ class Image(object):
         if Yi > Yf:
             Yi = Yf
 
-
         return Xi, Xf, Yi, Yf
-
-
 
     def stat(self, *coor, **option):
         """
@@ -954,74 +966,72 @@ class Image(object):
 
         """
 
-        nx = option.get('NWX', 10)  #use 10 windows in X by default
-        ny = option.get('NWY', 10)  #use 10 windows in Y by default
-        bins = option.get('BINS', 50) #use 50 bins for histogram by default
+        nx = option.get('NWX', 10)  # use 10 windows in X by default
+        ny = option.get('NWY', 10)  # use 10 windows in Y by default
+        bins = option.get('BINS', 50)  # use 50 bins for histogram by default
 
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
-        #wx = (Xf - Xi)//nx  #NHA /
-        #wy = (Yf - Yi)/ny   #NHA /
+        # wx = (Xf - Xi)//nx  #NHA /
+        # wy = (Yf - Yi)/ny   #NHA /
 
-
-
-        #generate array of nx * ny elements
+        # generate array of nx * ny elements
         aux_std = np.zeros((nx, ny))
         aux_mean = np.zeros((nx, ny))
         aux_median = np.zeros((nx, ny))
 
-
-        windows = subwindowcoor(Xi, Xf, Yi, Yf, **option)  #windows is a generator of subwindows
-        #for each sub window compute std, mean and median
+        windows = subwindowcoor(Xi, Xf, Yi, Yf, **option)  # windows is a generator of subwindows
+        # for each sub window compute std, mean and median
         for i, j, xi, xf, yi, yf in windows:
-            #This should work no matter the image orientation!
+            # This should work no matter the image orientation!
             aux_std[i, j] = np.std(self[xi:xf, yi:yf], axis=None)
             aux_mean[i, j] = np.mean(self[xi:xf, yi:yf], axis=None)
             aux_median[i, j] = np.median(self[xi:xf, yi:yf], axis=None)
 
             if option.get('PRINT', False):
-                print(("%4d %4d %4d %4d %7.3f %7.3f %7.3f") % (xi, xf, yi, yf, aux_std[i, j], aux_mean[i, j], aux_median[i, j]))
+                print(("%4d %4d %4d %4d %7.3f %7.3f %7.3f") %
+                      (xi, xf, yi, yf, aux_std[i, j], aux_mean[i, j], aux_median[i, j]))
 
-        #Compute statistic
-        medianval = np.median(aux_median, axis=None)      #median value of boxes
-        meanval = np.mean(aux_mean, axis=None)          #mean value of boxes
-        stdstd = np.std(aux_std, axis=None)         #stddev of standard deviation of boxes
-        medstd = np.median(aux_std, axis=None)      #median value of standard deviation
+        # Compute statistic
+        medianval = np.median(aux_median, axis=None)  # median value of boxes
+        meanval = np.mean(aux_mean, axis=None)  # mean value of boxes
+        stdstd = np.std(aux_std, axis=None)  # stddev of standard deviation of boxes
+        medstd = np.median(aux_std, axis=None)  # median value of standard deviation
 
-        #if RETURN is True, return tuple with mean and std
+        # if RETURN is True, return tuple with mean and std
         if option.get('RETURN'):
             return (meanval, medianval, medstd, stdstd)
 
-
-
-
-        #TODO print the correct window used for the computation
+        # TODO print the correct window used for the computation
         print("")
-        print(("Window analyzed: X(%d,%d)  Y(%d,%d) divided in %d subwindows") % (Xi, Xf, Yi, Yf, nx*ny))
+        print(("Window analyzed: X(%d,%d)  Y(%d,%d) divided in %d subwindows") %
+              (Xi, Xf, Yi, Yf, nx*ny))
         print(("MaxVal=%8.2f  ADUs") % self[Xi:Xf, Yi:Yf].max())
         print(("MinVal=%8.2f  ADUs") % self[Xi:Xf, Yi:Yf].min())
         print("")
         print(("Mean  = %8.2f +/-%7.3f ADUs") % (meanval, medstd))
         print(("Median= %8.2f +/-%7.3f ADUs") % (medianval, medstd))
         print("")
-        #change shape of mean array from 2D to 1D
-        #TODO  window is not defined....
+        # change shape of mean array from 2D to 1D
+        # TODO  window is not defined....
         im = self[Xi:Xf, Yi:Yf].copy()
         im.shape = (im.shape[0]*im.shape[1], )
 
-        #number of standard deviations to define the mask
+        # number of standard deviations to define the mask
         nstd = option.get('NSTD', 6)
-        #generate a mask with all values inside +/- 5*stddev
-        #TODO: Check if this is the best way to produce a mask, or maybe use masked array....
+        # generate a mask with all values inside +/- 5*stddev
+        # TODO: Check if this is the best way to produce a mask, or maybe use masked array....
         mask1 = im < (meanval + nstd*medstd)
         mask2 = im > (meanval - nstd*medstd)
-        #mask = mask1*mask2
+        # mask = mask1*mask2
         plt.figure()
-        #TODO : Check why histogram is wrong with NSTD less than 6
+        # TODO : Check why histogram is wrong with NSTD less than 6
         if option.get('LOG', False):
-            plt.hist(im, list(np.linspace((meanval - nstd*medstd), (meanval + nstd*medstd), bins)), histtype='step', log='True')
+            plt.hist(im, list(np.linspace((meanval - nstd*medstd),
+                                          (meanval + nstd*medstd), bins)), histtype='step', log='True')
         else:
-            plt.hist(im, list(np.linspace((meanval - nstd*medstd), (meanval + nstd*medstd), bins)), histtype='step')
+            plt.hist(im, list(np.linspace((meanval - nstd*medstd),
+                                          (meanval + nstd*medstd), bins)), histtype='step')
 
         plt.grid()
         plt.ylabel('Frequency')
@@ -1030,9 +1040,12 @@ class Image(object):
             plt.title('Histogram of pixel values for %s' % option.get('TITLE'))
         else:
             plt.title('Histogram of pixel values')
-        plt.figtext(0.15, 0.8, 'Mean=%8.2f ADUs' % meanval, fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
-        plt.figtext(0.15, 0.75, 'Median= %8.2f ADUs' % medianval, fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
-        plt.figtext(0.15, 0.65, 'Window:[%d:%d,%d:%d]' % (Xi, Xf, Yi, Yf), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
+        plt.figtext(0.15, 0.8, 'Mean=%8.2f ADUs' % meanval, fontsize=9,
+                    bbox=dict(facecolor='yellow', alpha=0.5))
+        plt.figtext(0.15, 0.75, 'Median= %8.2f ADUs' % medianval,
+                    fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
+        plt.figtext(0.15, 0.65, 'Window:[%d:%d,%d:%d]' % (
+            Xi, Xf, Yi, Yf), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
         if option.get('CF'):
             cf = option.get('CF')
             if option.get('FACTOR'):
@@ -1041,11 +1054,13 @@ class Image(object):
                 factor = 1.0
             cf = cf/factor
 
-            plt.figtext(0.15, 0.7, 'RMS   = %7.3f -e  +/-%7.3f' % (medstd*cf, stdstd*cf), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
+            plt.figtext(0.15, 0.7, 'RMS   = %7.3f -e  +/-%7.3f' % (medstd*cf, stdstd*cf),
+                        fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
         else:
-            #TODO why I'm dividing by sqrt(2)
-            #figtext(0.15,0.7,'RMS   = %7.3f  +/-%7.3f ADUs' % (medstd,stdstd/sqrt(2.0)),fontsize=9,bbox=dict(facecolor='yellow', alpha=0.5))
-            plt.figtext(0.15, 0.7, 'RMS   = %7.3f  +/-%7.3f ADUs' % (medstd, stdstd), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
+            # TODO why I'm dividing by sqrt(2)
+            # figtext(0.15,0.7,'RMS   = %7.3f  +/-%7.3f ADUs' % (medstd,stdstd/sqrt(2.0)),fontsize=9,bbox=dict(facecolor='yellow', alpha=0.5))
+            plt.figtext(0.15, 0.7, 'RMS   = %7.3f  +/-%7.3f ADUs' %
+                        (medstd, stdstd), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
         if option.get('SAVE'):
             if option.get('TITLE', self.filename):
                 name = option.get('TITLE')
@@ -1054,10 +1069,7 @@ class Image(object):
         if option.get('SHOW', False):
             plt.show()
 
-
-
-
-    #TODO: Must be finished
+    # TODO: Must be finished
     def extractspect(self, x0, y0, width, angle):
         """
         Extract a tilted spectra like UVES.
@@ -1067,9 +1079,9 @@ class Image(object):
 
         """
         spectra = []
-        #ycoor = []
+        # ycoor = []
 
-        #TODO Initialize generator for tilted line
+        # TODO Initialize generator for tilted line
         limits = genspectralimits(self, x0, y0, width, angle)
 
         for x, yi, yf in limits:
@@ -1077,9 +1089,7 @@ class Image(object):
             if x == 0:
                 y0pos = (yi+yf)/2.0
 
-
-
-        return y0pos, np.array(spectra)  #convert list to array
+        return y0pos, np.array(spectra)  # convert list to array
 
     def avecol(self, *ycoor, **option):
         """
@@ -1120,21 +1130,20 @@ class Image(object):
             ym = option.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
-            #figtext(0.15,0.85,'Columns Average @ Y(%d:%d)' % (y1,y2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
+            # figtext(0.15,0.85,'Columns Average @ Y(%d:%d)' % (y1,y2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.show()
             if option.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
                 name = option.get('TITLE', self.filename)
-                #TODO Remove .fits from self.filename
+                # TODO Remove .fits from self.filename
                 name = name.replace('.fits', '')
                 name = name.replace(' ', '_')
-                plt.savefig('ColAvrg_'+ name + dtstr + '.png')
+                plt.savefig('ColAvrg_' + name + dtstr + '.png')
 
             return None
         return np.mean(self[self.xi:self.xf, y1:y2], axis=1)
-
 
     def mediancol(self, *ycoor, **option):
         """Average and plot the columns starting from  yi till  yf
@@ -1159,8 +1168,8 @@ class Image(object):
                 plt.figure()
             plt.grid()
             plottitle = option.get('TITLE', '')
-            plt.title(plottitle+'\n'+ 'Col Median @ (%d:%d)' % (y1, y2))
-            #title('Y axis Median')
+            plt.title(plottitle+'\n' + 'Col Median @ (%d:%d)' % (y1, y2))
+            # title('Y axis Median')
             plt.xlabel('Rows')
             plt.ylabel('Signal [ADUs]')
             plt.plot(np.median(self[self.xi:self.xf, y1:y2], axis=1))
@@ -1173,23 +1182,20 @@ class Image(object):
             ym = option.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
-            #figtext(0.15,0.85,'Y axis Median @ Y(%d:%d)' % (y1,y2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
-
+            # figtext(0.15,0.85,'Y axis Median @ Y(%d:%d)' % (y1,y2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.show()
             if option.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
                 name = option.get('TITLE', self.filename)
-                #TODO Remove .fits from self.filename
+                # TODO Remove .fits from self.filename
                 name = name.replace('.fits', '')
                 name = name.replace(' ', '_')
-                plt.savefig('ColMedian_'+ name + dtstr + '.png')
+                plt.savefig('ColMedian_' + name + dtstr + '.png')
 
             return None
         return np.median(self[self.xi:self.xf, y1:y2], axis=1)
-
-
 
     def averow(self, *xcoor, **option):
         """
@@ -1210,44 +1216,39 @@ class Image(object):
 
         x1, x2 = self.get_xcoor(*xcoor)
 
-
-        if not option.get('RETURN', False): #instead of plotting, return a vector
+        if not option.get('RETURN', False):  # instead of plotting, return a vector
             OVERPLOT = option.get('OVERPLOT', False)
             if not OVERPLOT:
                 plt.figure()
             plt.grid()
             plottitle = option.get('TITLE', '')
-            plt.title(plottitle+'\n'+ ' Row Avrg @ (%d:%d)' % (x1, x2))
-            #title('Row Average '+plottitle)
+            plt.title(plottitle+'\n' + ' Row Avrg @ (%d:%d)' % (x1, x2))
+            # title('Row Average '+plottitle)
             plt.xlabel('Columns')
             plt.ylabel('Signal [ADUs]')
 
-
             plt.plot(np.mean(self[x1:x2, self.yi:self.yf], axis=0))
-            #xi, xf = plt.xlim()
-            #yi, yf = plt.ylim()
+            # xi, xf = plt.xlim()
+            # yi, yf = plt.ylim()
             xl = option.get('XMIN', None)
             xm = option.get('XMAX', None)
             yl = option.get('YMIN', None)
             ym = option.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
-            #figtext(0.15,0.85,'Row Average @ X(%d:%d)' % (x1,x2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
+            # figtext(0.15,0.85,'Row Average @ X(%d:%d)' % (x1,x2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
             plt.show()
-            #TODO Add datetime to saved file to make it unique
+            # TODO Add datetime to saved file to make it unique
             if option.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
                 if option.get('TITLE'):
                     name = option.get('TITLE', self.filename)
                     name = name.replace(' ', '_')
-                plt.savefig('RowAvrg_'+ name + dtstr + '.png')
-
+                plt.savefig('RowAvrg_' + name + dtstr + '.png')
 
             return None
         return np.mean(self[x1:x2, self.yi:self.yf], axis=0)
-
-
 
     def medianrow(self, *xcoor, **option):
         """
@@ -1275,21 +1276,21 @@ class Image(object):
                 plt.figure()
             plt.grid()
             plottitle = option.get('TITLE', '')
-            plt.title(plottitle+'\n'+ ' Row Median @ (%d:%d)' % (x1, x2))
-            #title('X Median')
+            plt.title(plottitle+'\n' + ' Row Median @ (%d:%d)' % (x1, x2))
+            # title('X Median')
             plt.xlabel('Columns')
             plt.ylabel('Signal [ADUs]')
 
             plt.plot(np.median(self[x1:x2, self.yi:self.yf], axis=0))
-            #xi, xf = plt.xlim()
-            #yi, yf = plt.ylim()
+            # xi, xf = plt.xlim()
+            # yi, yf = plt.ylim()
             xl = option.get('XMIN', None)
             xm = option.get('XMAX', None)
             yl = option.get('YMIN', None)
             ym = option.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
-            #figtext(0.15,0.85,'X Median @ X(%d:%d)' % (x1,x2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
+            # figtext(0.15,0.85,'X Median @ X(%d:%d)' % (x1,x2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.show()
             if option.get('SAVE'):
@@ -1298,11 +1299,10 @@ class Image(object):
                 if option.get('TITLE'):
                     name = option.get('TITLE', self.filename)
                     name = name.replace(' ', '_')
-                plt.savefig('RowMedian_'+ name + dtstr + '.png')
+                plt.savefig('RowMedian_' + name + dtstr + '.png')
 
             return None
         return np.median(self[x1:x2, self.yi:self.yf], axis=0)
-
 
     def set_value(self, value=1000, *coor, **option):
         """
@@ -1311,22 +1311,20 @@ class Image(object):
 
         """
 
-        Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)  #get area coordinates from coor
-        self.data[Xi:Xf, Yi:Yf] = value              #fill numpy array with value
+        Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)  # get area coordinates from coor
+        self.data[Xi:Xf, Yi:Yf] = value  # fill numpy array with value
 
         stddev = option.get('STD', 0)
         if stddev != 0:
             noise = np.random.standard_normal([Xf-Xi, Yf-Yi])
             self.data[Xi:Xf, Yi:Yf] += noise*stddev
 
-
     def get_data(self):
         """
         Returns the whole numpy array which contains the image
         """
-        #return self.data
+        # return self.data
         return np.copy(self.data)
-
 
     def get_xi(self):
         """
@@ -1401,9 +1399,6 @@ class Image(object):
         """
         return self.yos
 
-
-
-
     def format(self):
         """
         Return a tuple with the X and Y dimension of the image
@@ -1423,9 +1418,6 @@ class Image(object):
         self.nx = nx
         self.ny = ny
         print(("Xsubwindows=%d, Ysubwindows=%d") % (self.nx, self.ny))
-
-
-
 
     def fftcol(self, ReadOutSpeed=100, Vdelay=5, ColStart=None, ColEnd=None, **option):
         """
@@ -1462,16 +1454,16 @@ class Image(object):
         if ColEnd == None:
             ColEnd = self.shape[1]
 
-        #compute frequency
+        # compute frequency
         Tp2p = (1.0/ReadOutSpeed)/1000.0
 
-        #Time between 2 vertical pixels is equal to time from pix to pixel
-        #multiplied by number of horizontal pixels plus the vertical delay for the parallel transfer
+        # Time between 2 vertical pixels is equal to time from pix to pixel
+        # multiplied by number of horizontal pixels plus the vertical delay for the parallel transfer
         Ts = Tp2p*(self.shape[1] + Vdelay)
 
         if option.get('PLOT', True):
             print("Time between vertical pixels: %f s" % Ts)
-        #NPix is number of pixels in the column
+        # NPix is number of pixels in the column
         NPix = self.shape[0]
         ColS = ColStart
         ColE = ColEnd
@@ -1479,7 +1471,7 @@ class Image(object):
         if option.get('PLOT', True):
             print("First and Last column to analyse: %d %d" % (ColS, ColE))
 
-        DimFFT = 2**(nextpow2(NPix))   #find closer power of 2
+        DimFFT = 2**(nextpow2(NPix))  # find closer power of 2
         FirstPix = 0
         LastPix = DimFFT
         Fs = 1/Ts
@@ -1487,9 +1479,8 @@ class Image(object):
             print("Number of original pixels: %d" % NPix)
             print("Dimension FFT: %d pix" % DimFFT)
 
-        #compute freq vector for ploting
+        # compute freq vector for ploting
         freq = (Fs/2) * np.linspace(0, 1, num=DimFFT//2)
-
 
         if option.get('PLOT', True):
             print(("Largo freq=%d") % len(freq))
@@ -1497,7 +1488,7 @@ class Image(object):
             print("Each freq bin is equal to: ", Fs/DimFFT, " Hz")
             print("Maximum freq : ", Fs/2)
 
-        #prepare the hanning window
+        # prepare the hanning window
         hwindow = np.hanning(DimFFT)
         if option.get('PLOT', True):
             print(("Largo hwindow=%d") % len(hwindow))
@@ -1505,25 +1496,28 @@ class Image(object):
         Acum = np.zeros(DimFFT//2)
 
         for x in range(ColS, ColE):
-            #col = self.data[FirstPix:LastPix,x]
+            # col = self.data[FirstPix:LastPix,x]
             col = data[FirstPix:LastPix, x]
-            col = col * hwindow       #apply hanning window
-            TransF = np.fft.fft(col)/DimFFT #NPix  #TODO check if this is correct
+            col = col * hwindow  # apply hanning window
+            TransF = np.fft.fft(col)/DimFFT  # NPix  #TODO check if this is correct
             AbsTransF = 2 * abs(TransF[:DimFFT//2])
             Acum = Acum + AbsTransF
 
-        Acum = Acum/(ColE-ColS)   #take the average of the ffts
+        Acum = Acum/(ColE-ColS)  # take the average of the ffts
 
         if option.get('RETURN', False):
-        #if option.get('PLOT',True):
+            # if option.get('PLOT',True):
             plt.figure()
             binstart = option.get('BSTART', 0)
             plt.grid()
-            plt.plot(freq[binstart:], Acum[binstart:])    #skip the DC component in the plot to improve autoscale
-            plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True), fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+            # skip the DC component in the plot to improve autoscale
+            plt.plot(freq[binstart:], Acum[binstart:])
+            plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True),
+                        fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
             note = option.get('NOTE', None)
             if note:
-                plt.figtext(0.15, 0.85, '%s' % note, fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+                plt.figtext(0.15, 0.85, '%s' % note, fontsize=11,
+                            bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.xlabel('Freq [Hz] with resolution='+str(Fs/DimFFT)+' Hz')
             plt.ylabel('Intensity')
@@ -1534,8 +1528,8 @@ class Image(object):
                 plt.savefig('fftcol_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
             plt.show()
 
-        else: return freq, Acum
-
+        else:
+            return freq, Acum
 
     def fftrow(self, ReadOutSpeed=100, RowStart=None, RowEnd=None, **option):
         """
@@ -1560,7 +1554,7 @@ class Image(object):
         plot(freq,psd2)
         """
 
-        #by default, remove bias level
+        # by default, remove bias level
         if option.get('DEBIAS', True):
             data = self.data
             data = data - data.mean()
@@ -1572,20 +1566,20 @@ class Image(object):
         if RowEnd == None:
             RowEnd = self.shape[0]
 
-        #pixel time
+        # pixel time
         Ts = 1.0/ReadOutSpeed
         Ts = Ts/1000.0
 
         if option.get('PLOT', True):
             print("Time between horizontal pixels: %f" % Ts)
-        #number of pixels
+        # number of pixels
         NPix = self.shape[1]
         RowS = RowStart
         RowE = RowEnd
 
         if option.get('PLOT', True):
             print("First and Last row to analyse: %d %d" % (RowS, RowE))
-        #dimension of FFT
+        # dimension of FFT
         DimFFT = 2**(nextpow2(NPix))
         FirstPix = 0
         LastPix = DimFFT
@@ -1593,12 +1587,11 @@ class Image(object):
             print("Number of original pixels: %d" % NPix)
             print("Dimension FFT: %d pix" % DimFFT)
 
-        #compute maximum freq
+        # compute maximum freq
         Fs = 1/Ts
 
-        #compute freq vector for ploting
+        # compute freq vector for ploting
         freq = (Fs/2)*np.linspace(0, 1, num=DimFFT//2)
-
 
         if option.get('PLOT', True):
             print(("Length freq=%d") % len(freq))
@@ -1606,7 +1599,7 @@ class Image(object):
             print("Each freq bin is equal to: ", Fs/DimFFT, " Hz")
             print("Maximum freq : ", Fs/2)
 
-        #prepare the hanning window
+        # prepare the hanning window
         hwindow = np.hanning(DimFFT)
         if option.get('PLOT', True):
             print(("Length hwindow=%d") % len(hwindow))
@@ -1614,25 +1607,28 @@ class Image(object):
         Acum = np.zeros(DimFFT//2)
 
         for y in range(RowS, RowE):
-            #row = self.data[y,FirstPix:LastPix]
+            # row = self.data[y,FirstPix:LastPix]
             row = data[y, FirstPix:LastPix]
             row = row*hwindow
-            TransF = np.fft.fft(row)/DimFFT #NPix
+            TransF = np.fft.fft(row)/DimFFT  # NPix
             AbsTransF = 2*abs(TransF[:DimFFT//2])
             Acum = Acum+AbsTransF
 
         Acum = Acum/(RowE-RowS)
 
         if option.get('RETURN', False):
-        #if option.get('PLOT',True):
+            # if option.get('PLOT',True):
             plt.figure()
             binstart = option.get('BSTART', 0)
             plt.grid()
-            plt.plot(freq[binstart:], Acum[binstart:])    #skip the DC component in the plot to improve autoscale
-            plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True), fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+            # skip the DC component in the plot to improve autoscale
+            plt.plot(freq[binstart:], Acum[binstart:])
+            plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True),
+                        fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
             note = option.get('NOTE', None)
             if note:
-                plt.figtext(0.15, 0.85, '%s' % note, fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+                plt.figtext(0.15, 0.85, '%s' % note, fontsize=11,
+                            bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.xlabel('Freq [Hz] with resolution='+str(Fs/DimFFT)+' Hz')
             plt.ylabel('Intensity')
@@ -1642,8 +1638,8 @@ class Image(object):
                 plt.savefig('fftrow_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
             plt.show()
 
-
-        else: return freq, Acum
+        else:
+            return freq, Acum
 
     def fft2D(self, **option):
         """
@@ -1654,12 +1650,12 @@ class Image(object):
         """
         image = self.data
         Dim = 2**nextpow2(min(image.shape))
-        #now crop image to this Dim
+        # now crop image to this Dim
         image = image[:Dim, :Dim]
         freq = np.abs(np.fft.fft2(image))
         freqshifted = np.fft.fftshift(freq)
         logfreq = np.log(freqshifted)
-        #plt.hist(logfreq.ravel(),bins=100)
+        # plt.hist(logfreq.ravel(),bins=100)
         plt.imshow(logfreq, interpolation="none")
         return logfreq
 
@@ -1668,12 +1664,12 @@ class Image(object):
         Count the bit frequency
         Might be useful to detect missing bits in the ADC
         """
-        labels = ['$2^0$', '$2^1$', '$2^2$', '$2^3$', '$2^4$', '$2^5$', '$2^6$', '$2^7$', '$2^8$', '$2^9$', '$2^{10}$', '$2^{11}$', '$2^{12}$', '$2^{13}$'\
-        , '$2^{14}$', '$2^{15}$', '$2^{16}$']
+        labels = ['$2^0$', '$2^1$', '$2^2$', '$2^3$', '$2^4$', '$2^5$', '$2^6$', '$2^7$', '$2^8$',
+                  '$2^9$', '$2^{10}$', '$2^{11}$', '$2^{12}$', '$2^{13}$', '$2^{14}$', '$2^{15}$', '$2^{16}$']
 
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
-        #convert CCD data to 16 bit integers
+        # convert CCD data to 16 bit integers
         aux = self.data[Xi:Xf, Yi:Yf].astype(np.uint16)
 
         print(aux.dtype)
@@ -1681,7 +1677,8 @@ class Image(object):
         print(type(totalpix))
         bitfreq_0 = []
         bitfreq_1 = []
-        print("Mean value= %f,  StdDev= %f" % (np.mean(self.data[Xi:Xf, Yi:Yf]), np.std(self.data[Xi:Xf, Yi:Yf])))
+        print("Mean value= %f,  StdDev= %f" %
+              (np.mean(self.data[Xi:Xf, Yi:Yf]), np.std(self.data[Xi:Xf, Yi:Yf])))
         print("Number of pixels: %d" % totalpix)
         for i in range(16):
             bitp = int(2**i)
@@ -1692,10 +1689,9 @@ class Image(object):
             bitfreq_1.append(nbits1)
             print("Bit value :%5d @0: %7d  @1: %7d" % (bitp, nbits0, nbits1))
 
-
         xlocations = np.array((list(range(len(bitfreq_0)))))
         width = 0.7
-        #fig = plt.figure()
+        # fig = plt.figure()
         p1 = plt.bar(xlocations, bitfreq_0, width, color='c')
         p2 = plt.bar(xlocations, bitfreq_1, width, color='b', bottom=bitfreq_0)
         plt.xticks(xlocations+width/2.0, labels)
@@ -1704,8 +1700,8 @@ class Image(object):
         plt.title('Bit frequency analysis')
         plt.ylabel('Number of counts')
         plt.axhline(y=totalpix/2, color='r')
-        #uncomment following line if you want text in x axis rotated 45degree
-        #fig.autofmt_xdate()
+        # uncomment following line if you want text in x axis rotated 45degree
+        # fig.autofmt_xdate()
         plt.show()
 
     def addnormalnoise(self, stddev):
@@ -1738,12 +1734,12 @@ class Image(object):
         jitter = jit * (10**-9)
 
         pixeltime = 1.0/(rofreq*1000)
-        shotnoise = np.random.standard_normal([self.shape[0], self.shape[1]])    #array to store shot noise
+        shotnoise = np.random.standard_normal(
+            [self.shape[0], self.shape[1]])  # array to store shot noise
         aux = np.zeros((self.shape[0], self.shape[1]))
         signal = np.zeros((self.shape[0], self.shape[1]))
 
-        #auxserial = zeros((self.shape[1],))
-
+        # auxserial = zeros((self.shape[1],))
 
         col = np.arange(0, self.shape[1])
         row = np.arange(0, self.shape[0])
@@ -1760,24 +1756,22 @@ class Image(object):
 
         aux = data * jitter_matrix
 
-
-
-        #generate on vector containing pixel time for serial register
-        #for i in range(len(auxserial)):
+        # generate on vector containing pixel time for serial register
+        # for i in range(len(auxserial)):
         #    auxserial[i] = i*pixeltime
 
-        #generate full array with pixel time for all pixels in de image
-        #for i in range(self.shape[0]):
+        # generate full array with pixel time for all pixels in de image
+        # for i in range(self.shape[0]):
         #    aux[i,:] = aux[i,:]+(auxserial[:]+(i*auxserial[-1]+pixeltime*vdelay))
 
-        #add the sinusoids now
+        # add the sinusoids now
         for i in range(len(fnvector)):
             signal = signal + ampvector[i]*np.sin(2*np.pi*fnvector[i]*aux)
 
-        #compute shot noise
+        # compute shot noise
         sqrt_signal = np.sqrt(abs(signal))
-        #add it to signal
+        # add it to signal
         signal = signal+shotnoise*sqrt_signal
 
-        #now add generated signal to ccd pixels
+        # now add generated signal to ccd pixels
         self.data = self.data+signal

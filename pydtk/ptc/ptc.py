@@ -8,6 +8,7 @@ Created on Sat May 12 15:28:54 2018
 import numpy as np
 from numpy import ma
 from pydtk import Image
+from scipy import stats
 import matplotlib.pyplot as plt
 from pydtk.utils.utilsfunc import subwindowcoor
 from pydtk.utils.utils import medianstack
@@ -177,7 +178,34 @@ def ron_adu(b1, b2, *coor, **kargs):
     return np.median(std_biasdiff, axis=None)/np.sqrt(2.0)
 
 
-def ptc_2ff(b1, b2, ff1, ff2, *coor, **kargs):
+def correctTDIShift(bias, tdi1, tdi2):
+    image1 = tdi1 - bias
+    image2 = tdi2 - bias
+    line1 = image1.avecol(int(image1.shape[1]/2-10), int(image1.shape[1]/2+10), RETURN=True)
+    line2 = image2.avecol(int(image1.shape[1]/2-10), int(image2.shape[1]/2+10), RETURN=True)
+    rms12 = []
+    rms21 = []
+
+    for i in range(100):
+        dif12 = line1[i: 1000+i] - line2[:1000]
+        dif21 = line2[i: 1000+i] - line1[:1000]
+        sqr12 = dif12 * dif12
+        sqr21 = dif21 * dif21
+        rms12.append(np.sqrt(sqr12.sum()))
+        rms21.append(np.sqrt(sqr21.sum()))
+    arms12 = np.array(rms12)
+    arms21 = np.array(rms21)
+    if np.argmin(arms12) == 0 and np.argmin(arms21) == 0:
+        return image1, image2
+    elif np.argmin(arms12) == 0 and np.argmin(arms21) > 0:
+        return image1.crop(0, image1.shape[0]-np.argmin(arms21), 0, image1.shape[1]),\
+            image2.crop(np.argmin(arms21), image2.shape[0], 0, image2.shape[1])
+    elif np.argmin(arms12) > 0 and np.argmin(arms21) == 0:
+        return image1.crop(np.argmin(arms12), image1.shape[0], 0, image1.shape[1]),\
+            image2.crop(0, image2.shape[0]-np.argmin(arms12), 0, image2.shape[1])
+
+
+def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
     """
     Perform ptc plot.
     ex:
@@ -203,98 +231,66 @@ def ptc_2ff(b1, b2, ff1, ff2, *coor, **kargs):
 
     """
 
-    outlayers = kargs.get('OLAYERS', 0.5)  # factor to elliminate outlayers
-    order = kargs.get('ORDER', 1)
+    nstd = kargs.get('NSTD', 3)  # factor to elliminate outlayers
+    order = kargs.get('ORDER', 2)
 
-    x1, x2, y1, y2 = b1.get_windowcoor(*coor)
+    dbiasff1, dbiasff2 = correctTDIShift(bias, tdi1, tdi2)
 
-    ff1 = ff1.crop(x1, x2, y1, y2)
-    ff2 = ff2.crop(x1, x2, y1, y2)
-    b1 = b1.crop(x1, x2, y1, y2)
+    x1, x2, y1, y2 = dbiasff1.get_windowcoor(*coor)
 
-    dbiasff1 = ff1-b1  # debiased FF1
-    dbiasff2 = ff2-b1  # debiased FF2
+    dbiasff1 = dbiasff1.crop(x1, x2, y1, y2)
+    dbiasff2 = dbiasff2.crop(x1, x2, y1, y2)
+    #b1 = b1.crop(x1, x2, y1, y2)
+
+    # dbiasff1 = ff1-b1  # debiased FF1
+    # dbiasff2 = ff2-b1  # debiased FF2
     signal = (dbiasff1+dbiasff2)/2.0  # mean signal
-    shotnoise = dbiasff1-dbiasff2         #
+    shotnoise = dbiasff1-dbiasff2
 
-    # get number of rows and columns
-    nrows = b1.get_xf()
-    ncols = b1.get_yf()
+    orig_signal = signal.mean(RETURN=True, AXIS=1)
+    orig_var = shotnoise.var(RETURN=True, AXIS=1)/2.0
 
-    # define the direction in which light level is increasing, normally the longest axis
-    if ncols > nrows:
-        DIRECTION = 'COLS'
-    elif nrows > ncols:
-        DIRECTION = 'ROWS'
-    else:
-        print("Warning: window must be rectangular")
-        return None
+    # Shot Noise data
+    shotnoisedata = shotnoise.get_data()
+    # Compute Z score
+    zsco = stats.zscore(shotnoisedata, axis=1, ddof=1)
+    # Create mask for values outside +3/-3 std
+    snarray_mask = np.ma.masked_outside(zsco, -1.0*nstd, nstd)
+    sn_masked = np.ma.masked_where(np.ma.getmask(snarray_mask), shotnoise.get_data())
+    shotnoise.data = sn_masked
 
-    if kargs.get('VERBOSE', False):
-        print("Nrows = %d, Ncols = %d, Direction = %s" % (nrows, ncols, DIRECTION))
-
-    # ron=ron_adu(b1,b2)  #images are already cropped, no need to pass *coor
-
-    # for each row or column (depending on DIRECTION) compute meansignal, variance and standard deviation
-    if DIRECTION == 'COLS':
-        meansig = np.zeros(ncols)
-        variance = np.zeros(ncols)
-        stddev = np.zeros(ncols)
-        for line in range(ncols):
-            meansig[line] = np.mean(signal[:, line])
-            variance[line] = np.var(shotnoise[:, line])/2.0
-            stddev[line] = np.std(shotnoise[:, line])/np.sqrt(2.0)
-
-    else:
-        meansig = np.zeros(nrows)
-        variance = np.zeros(nrows)
-        stddev = np.zeros(nrows)
-        for line in range(nrows):
-            meansig[line] = np.mean(signal[line, :])
-            variance[line] = np.var(shotnoise[line, :])/2.0
-            stddev[line] = np.std(shotnoise[line, :])/np.sqrt(2.0)
+    signalmean = signal.mean(RETURN=True, AXIS=1)
+    variance = shotnoise.var(RETURN=True, AXIS=1)/2.0
 
     # fit line using all data (later we eliminate wrong values by masking )
-    coefts = np.polyfit(meansig, variance, order)
+    coefts = np.polyfit(signalmean, variance, order)
     polycoef = np.poly1d(coefts)
-    var_fitted = np.polyval(polycoef, meansig[:])
-    # compute what will be the maximum variance to use for PTC (mask wrong values)
-    v_lim_sup = var_fitted + outlayers * var_fitted
-    v_lim_inf = var_fitted - outlayers * var_fitted
-
-    var_masked = np.ma.masked_where((variance > v_lim_sup) | (variance < v_lim_inf), variance)
-    sig_masked = np.ma.masked_where((variance > v_lim_sup) | (variance < v_lim_inf), meansig)
-
-    # plot(meansig,masked_variance,'b.')
-    # plot(meansig,var_masked,'b.')
-    masked_coefts = ma.polyfit(sig_masked, var_masked, order)
-    polynom = np.poly1d(masked_coefts)
-    var_fitted = np.polyval(polynom, sig_masked)
+    var_fitted = np.polyval(polycoef, signalmean[:])
 
     # if RETURN equal True, return signal_masked, variance masked, fitted variance and CF
     if kargs.get('RETURN', False):
         if order == 1:
-            return sig_masked, var_masked, var_fitted, (1/masked_coefts[0])
+            return signalmean, variance, var_fitted, (1/coefts[0])
         else:
-            return sig_masked, var_masked, var_fitted, (1/masked_coefts[1])
+            return signalmean, variance, var_fitted, (1/coefts[1])
 
     else:
         f, (ax1, ax2) = plt.subplots(1, 2, sharey=False, figsize=(10, 5))
         # plot variance vs signal without masking yet
-        ax1.plot(meansig, variance, '.b', meansig, v_lim_sup, 'r', meansig, v_lim_inf, 'r')
+        ax1.plot(orig_signal, orig_var, '.b')
         ax1.grid()
         ax1.set_title('Photon Transfer Curve')
         ax1.set_ylabel('Variance [ADU]**2')
         ax1.set_xlabel('Signal [ADU]')
 
         # plot variance vs signal WITH masking
-        ax2.plot(sig_masked, var_masked, '.b', sig_masked, var_fitted, 'r')
+        ax2.plot(signalmean, variance, '.b', signalmean, var_fitted, 'r')
         ax2.grid()
         title = 'PTC  CF=%f'
         if order == 2:
-            title = title % (1/masked_coefts[1])
+            title = title % (1/coefts[1])
         else:
-            title = title % (1/masked_coefts[0])
+            title = title % (1/coefts[0])
         ax2.set_title(title)
         ax2.set_ylabel('Variance [ADU]**2')
         ax2.set_xlabel('Signal [ADU]')
