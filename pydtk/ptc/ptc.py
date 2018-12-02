@@ -144,6 +144,120 @@ def gain(b1, b2, ff1, ff2, *coor, **kargs):
         plt.savefig('ConFac_'+filetitle+'.png')
 
 
+def linearity_residual(imagelist, *coor, **kargs):
+    """
+    Compute linearity residual using an image list starting
+    with 2 bias and then pairs of FF at diferent levels
+
+
+    """
+
+
+def ptc_ffpairs(imagelist, *coor, **kargs):
+    """
+    TODO: Need to be finished !!
+    NHA
+
+    Perform ptc plot for pairs of ff at same level.
+    The pairs of ff should have the same light level.
+    The first 2 images in the list must be bias
+    To eliminate the FPN, the 'shotnoise' image is computed as the subtraction
+    of two debiased flat field images
+    optional kargs arguments:
+    FACTOR (default = 2.0)
+    MAXSIGNAL (default 65535)  => compute PTC only for signal values less than MAXSIGNAL
+    VERBOSE (default=False)  ==> print out table with signal and variance
+
+    """
+
+    order = kargs.get('ORDER', 1)  # order of polynomial regression
+    if order > 2:
+        order = 2
+
+    MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
+    VERBOSE = kargs.get('VERBOSE', False)
+    ext = kargs.get('EXT', 0)
+
+    # read coordinates of first image
+    x1, x2, y1, y2 = Image(imagelist[0], ext).get_windowcoor(*coor)
+
+    oddimageindex = list(range(3, len(imagelist), 2))
+    evenimageindex = list(range(2, len(imagelist), 2))
+
+    # Read in bias1 and bias2
+    bias1 = Image(imagelist[0], ext).crop(x1, x2, y1, y2)
+    bias2 = Image(imagelist[1], ext).crop(x1, x2, y1, y2)
+
+    bias_dif = bias2 - bias1
+    # mask out all pixels with value greater or lower than  3*std
+    bias_dif.mask()
+
+    # Separate images in even and odd (crop the images..)
+    ff1 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2) for i in oddimageindex]
+    ff2 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2) for i in evenimageindex]
+
+    # remove bias from both ff images
+    ff1d = [(image - bias1) for image in ff1]
+    ff2d = [(image - bias2) for image in ff2]
+
+    if kargs.get('USE_FFMEAN', False):
+        ffmean = [(image1/image2)*image2.mean() for image1, image2 in zip(ff1d, ff2d)]
+    else:
+        ffmean = [(image1+image2)/2.0 for image1, image2 in zip(ff1d, ff2d)]
+
+    shotnoise = [(image1 - image2) for image1, image2 in zip(ff1d, ff2d)]
+
+    signal = [image.mean() for image in ff1d]  # ffmean]
+    variance = [image.var()/2.0 for image in shotnoise]
+
+    # Need to sort both signal and variance according to list containing mean signal
+    zipped = zip(signal, variance)
+    zipped_sorted = sorted(zipped)
+
+    # remove signal,variance pairs where signal is above MAXSIGNAL
+    zipped_sorted = [x for x in zipped_sorted if x[0] <= MAXSIGNAL]
+
+    # Now we unpack to get back signal and variance sorted
+    signal, variance = zip(*zipped_sorted)
+
+    if kargs.get('VERBOSE', False):
+        print('Mean signal    Variance')
+        for s, v in zip(signal, variance):
+            print(' {:6.1f}   {:6.1f}'.format(s, v))
+
+    # compute polynomial coeficients
+    coefts = np.polyfit(signal, variance, order)
+    polyts = np.poly1d(coefts)
+    # compute the fitted values for variance
+    variance_fitted = np.polyval(polyts, signal)
+
+    # print('Intercept = {}'.format(polyts(0)))
+
+    fig = plt.figure()  # create a figure object
+    ax = fig.add_subplot(1, 1, 1)  # create an axes object in the figure
+
+    ax.set_ylabel('Variance')
+    ax.set_xlabel('Signal')
+    ax.grid(True)
+    ax.set_title('Photon Transfer Curve')
+
+    # plot variance v/s signal
+    # figure()
+    ax.plot(signal, variance, 'b.')
+    ax.plot(signal, variance_fitted, 'r-')
+
+    cf = 1/coefts[0]
+
+    if order == 1:
+        cf = 1/coefts[0]
+        print('Extension: {}   CF = {:2.3f} -e/ADU   RON = {:2.3f} -e'.format(ext,
+                                                                              cf, cf * bias_dif.std()/np.sqrt(2.0)))
+    elif order == 2:
+        cf = 1/coefts[1]
+        print('Extension: {}   CF = {:2.3f} -e/ADU   RON = {:2.3f} -e'.format(ext,
+                                                                              cf, cf * bias_dif.std()/np.sqrt(2.0)))
+
+
 def ron_adu(b1, b2, *coor, **kargs):
     """
     Take two bias images, subtract one from another and
@@ -205,30 +319,102 @@ def correctTDIShift(bias, tdi1, tdi2):
             image2.crop(0, image2.shape[0]-np.argmin(arms12), 0, image2.shape[1])
 
 
+def ptc_shutterless(bias, tdi, *coor, **kargs):
+    """
+    The shutterless image is obtained defocusing an spot and then reading out
+    the CCD while the shutter is open
+    ptc_shutterless(bias, tdi, xi, xf, yi, yf, AXIS=1, ORDER=2, NSTD=3)
+    Use one bias image and a defocused spot which generate a trail over the CCD
+    as the shutter is kept open while reading.
+    AXIS = 1 => the readout is done along the ROWS
+    AXIS = 0 => the readout is done along the columns
+    ORDER= 2 or 1, is the order of polynomia to fit the PTC curve
+    NSTD=3 => mask out pixels which are more than 3 std from the mean
+    This method can be used on FORS2
+    """
+    nstd = kargs.get('NSTD', 3)  # factor to elliminate outlayers
+    order = kargs.get('ORDER', 2)
+    axis = kargs.get('AXIS', 1)
+    maxsignal = kargs.get('MAXSIGNAL', 65000)
+
+    tdidb = tdi - bias
+
+    x1, x2, y1, y2 = bias.get_windowcoor(*coor)
+
+    tdidbc = tdidb.crop(x1, x2, y1, y2)
+
+    datos = tdidbc.get_data()
+    zsco = stats.zscore(datos, axis=axis, ddof=1)
+    maskzscore = np.ma.masked_outside(zsco, -1*nstd, nstd)
+    maskmax = np.ma.masked_greater(datos, maxsignal)
+
+    datosz = np.ma.masked_where(np.ma.getmask(maskzscore), datos)
+    datoszm = np.ma.masked_where(datosz >= maxsignal, datosz)
+    tdidbc.data = datoszm
+
+    signal = tdidbc.mean(AXIS=axis)
+    signalvar = tdidbc.var(AXIS=axis)
+    cf = signal/signalvar
+
+    coefts = np.polyfit(signal[signal <= (maxsignal*0.9)],
+                        signalvar[signal <= (maxsignal*0.9)], order)
+    polycoef = np.poly1d(coefts)
+    var_fitted = np.polyval(polycoef, signal[:])
+
+    # if RETURN equal True, return signal_masked, variance masked, fitted variance and CF
+    if kargs.get('RETURN', False):
+        if order == 1:
+            return signal, signalvar, var_fitted, (1/coefts[0])
+        else:
+            return signal, signalvar, var_fitted, (1/coefts[1])
+
+    else:
+        f, (ax1, ax2) = plt.subplots(1, 2, sharey=False, figsize=(10, 5))
+        # plot variance vs signal without masking yet
+        ax1.plot(signal, cf, '.b')
+        ax1.grid()
+        ax1.set_title('Photon Transfer Curve')
+        ax1.set_ylabel('Variance [ADU]**2')
+        ax1.set_xlabel('Signal [ADU]')
+
+        # plot variance vs signal WITH masking
+        ax2.plot(signal, signalvar, '.b', signal, var_fitted, 'r')
+        ax2.grid()
+        title = 'PTC  CF=%f'
+        if order == 2:
+            title = title % (1/coefts[1])
+        else:
+            title = title % (1/coefts[0])
+        ax2.set_title(title)
+        ax2.set_ylabel('Variance [ADU]**2')
+        ax2.set_xlabel('Signal [ADU]')
+
+
 def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
     """
-    Perform ptc plot.
+    Perform ptc plot with one bias and 2 tdi images.
     ex:
-    ptc_2ff(b1,b2,ff1,ff2,50, 2000, 100, 170)
+    ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170)
     compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] plot the ptc curve and compute the CF using
     a first order polynomia
 
-    ptc_2ff(b1,b2,ff1,ff2,50, 2000, 100, 170 RETURN=True)
+    ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170, RETURN=True)
     compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] return the vectors and the CF, using
     a first order polynomia
 
-    ptc_2ff(b1,b2,ff1,ff2,50, 2000, 100, 170 ORDER=2)
+    ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170, ORDER=2)
     compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] plot the ptc curve, and use a
     polynomia of order 2
 
 
-    The 2 ff images should have a slope in flux to compute the ptc.
+    The 2 tdi images should have a slope in flux to compute the ptc.
     To eliminate the FPN, the 'shotnoise' image is computed as the subtraction
     of two debiased flat field images
     optional kargs arguments:
-    OUTLAYERS (default = 0.5)
+    NSTD (default = 3) Default number of std deviation to elliminate outlayers
     VERBOSE (default=False)
 
+    This method can be used on the TestBench
     """
 
     nstd = kargs.get('NSTD', 3)  # factor to elliminate outlayers
@@ -240,7 +426,7 @@ def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
 
     dbiasff1 = dbiasff1.crop(x1, x2, y1, y2)
     dbiasff2 = dbiasff2.crop(x1, x2, y1, y2)
-    #b1 = b1.crop(x1, x2, y1, y2)
+    # b1 = b1.crop(x1, x2, y1, y2)
 
     # dbiasff1 = ff1-b1  # debiased FF1
     # dbiasff2 = ff2-b1  # debiased FF2
@@ -261,6 +447,7 @@ def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
 
     signalmean = signal.mean(RETURN=True, AXIS=1)
     variance = shotnoise.var(RETURN=True, AXIS=1)/2.0
+    cf = signalmean/variance
 
     # fit line using all data (later we eliminate wrong values by masking )
     coefts = np.polyfit(signalmean, variance, order)
@@ -277,7 +464,8 @@ def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
     else:
         f, (ax1, ax2) = plt.subplots(1, 2, sharey=False, figsize=(10, 5))
         # plot variance vs signal without masking yet
-        ax1.plot(orig_signal, orig_var, '.b')
+        # ax1.plot(orig_signal, orig_var, '.b')
+        ax1.plot(signalmean, cf, '.b')
         ax1.grid()
         ax1.set_title('Photon Transfer Curve')
         ax1.set_ylabel('Variance [ADU]**2')
@@ -314,7 +502,8 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
     Ex:
     ptc_pixels(biaslist, fflst, 0,2000,300,600, LOW=100, HIGH=50000, STEP=10)
 
-    signal, var, var_fitted, cf = ptc_pixels(b1, ff1, ff2, 100,200,10, 2000, LOW=100, HIGH=50000, STEP=100, OLAYERS=0.4, RETURN=True)
+    signal, var, var_fitted, cf = ptc_pixels(
+        b1, ff1, ff2, 100,200,10, 2000, LOW=100, HIGH=50000, STEP=100, OLAYERS=0.4, RETURN=True)
     Compute the PTC in the window [100:200,10:2000] from 100ADUs up to 50000 ADUs each 100 ADUs,
 
     """
@@ -325,15 +514,15 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
     nwx = kargs.get('NWX', 10)  # size of windows in X to compute RON
     nwy = kargs.get('NWY', 10)  # size of windows in Y to compute RON
 
-    #print("Low = {}".format(low))
-    #print("High = {}".format(high))
-    #print("Step = {}".format(step))
+    # print("Low = {}".format(low))
+    # print("High = {}".format(high))
+    # print("Step = {}".format(step))
 
     order = kargs.get('ORDER', 1)  # order of polynomial regression
     if order > 2:
         order = 2
 
-    #print("Order = {}".format(order))
+    # print("Order = {}".format(order))
 
     # read biaslist
     biasimages = [Image(i, ext) for i in biaslist]
@@ -381,32 +570,32 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
     # flatten resulting arrays
     ffsignal_flatten = ffsignal_data.flatten()
     ffvar_flatten = ffvar.flatten()
-    #print("ffsignal_flatten, ffvar_flatten : {}, {}".format(len(ffsignal_flatten), len(ffvar_flatten)))
+    # print("ffsignal_flatten, ffvar_flatten : {}, {}".format(len(ffsignal_flatten), len(ffvar_flatten)))
 
     # convert ffsignal_flatten in integer
     ffsignal_flatten = ffsignal_flatten.astype(int)  # [int(i) for i in ffsignal_flatten]
     ffvar_flatten = ffvar_flatten.astype(int)
 
     # sort ffsignal_flatten and  ffvar_flatten
-    #indx = np.argsort(ffsignal_flatten)
-    #ffsignal_flatten = ffsignal_flatten[indx]
-    #ffvar_flatten =ffvar_flatten[indx]
+    # indx = np.argsort(ffsignal_flatten)
+    # ffsignal_flatten = ffsignal_flatten[indx]
+    # ffvar_flatten =ffvar_flatten[indx]
 
     # get unique values in ff
     ffsignal_unique = np.unique(ffsignal_flatten)
-    #print("ffsignal_unique : {}".format(len(ffsignal_unique)))
+    # print("ffsignal_unique : {}".format(len(ffsignal_unique)))
 
     # filter out  values lower than LOW and higher than HIGH
     ffsig_unique = [i for i in ffsignal_unique if i >= low and i <= high]
-    #print("ffsig_unique: {}".format(len(ffsig_unique)))
+    # print("ffsig_unique: {}".format(len(ffsig_unique)))
 
     # generate sampling values
     sampling = list(range(low, len(ffsig_unique), step))
-    #print("sampling ={}".format(len(sampling)))
+    # print("sampling ={}".format(len(sampling)))
 
     # create subset of unique values using sampling
     ffsampled = [ffsig_unique[i] for i in sampling]
-    #print("ffsampled : {}".format(len(ffsampled)))
+    # print("ffsampled : {}".format(len(ffsampled)))
 
     # by default use mean computation for variance
     if kargs.get('MEDIAN', False):
@@ -423,7 +612,7 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
     ffsampled = ffsampled[vfiltered_index]
     variance = variance[vfiltered_index]
 
-    #print(len(ffsignal_unique), len(variance))
+    # print(len(ffsignal_unique), len(variance))
 
     plt.scatter(ffsampled[::], variance[::])
     plt.grid()
@@ -432,7 +621,7 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
     # compute polynomial without filtering outlayers
     coefts_nf = np.polyfit(ffsampled, variance, order)
     polyts_nf = np.poly1d(coefts_nf)
-    #var_fitted = polyts_nf(ffsampled)
+    # var_fitted = polyts_nf(ffsampled)
 
     if order == 2:
         gain = 1/coefts_nf[1]
@@ -441,8 +630,8 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
         gain = 1/coefts_nf[0]
         print("GAIN = {} -e/ADU  RON = {} -e".format(1/coefts_nf[0], gain*np.median(stdsig)))
 
-    #ron = gain*np.median(stdsig)
-    #print("RON = {} e".format(ron))
+    # ron = gain*np.median(stdsig)
+    # print("RON = {} e".format(ron))
 
 
 def ptc_2pixels(b1, ff1, ff2, *coor, **kargs):
@@ -463,7 +652,8 @@ def ptc_2pixels(b1, ff1, ff2, *coor, **kargs):
     Ex:
     ptc_pixels(b1, ff1, ff2, 100,200,10, 2000, LOW=100, HIGH=50000, STEP=100, OLAYERS=0.4)
     if RETURN=True  the function will return the signal and variance and fitted variance array plus the CF
-    signal, var, var_fitted, cf = ptc_pixels(b1, ff1, ff2, 100,200,10, 2000, LOW=100, HIGH=50000, STEP=100, OLAYERS=0.4, RETURN=True)
+    signal, var, var_fitted, cf = ptc_pixels(
+        b1, ff1, ff2, 100,200,10, 2000, LOW=100, HIGH=50000, STEP=100, OLAYERS=0.4, RETURN=True)
     Compute the PTC in the window [100:200,10:2000] from 100ADUs up to 50000 ADUs each 100 ADUs,
 
     """
@@ -598,111 +788,6 @@ def ptc_ir(imagelist, variancelist,  NDIT=10, *coor, **kargs):
     # TODO continue with the program for this routine
 
 
-def ptc_ffpairs(imagelist, *coor, **kargs):
-    """
-    TODO: Need to be finished !!
-    NHA
-
-    Perform ptc plot for pairs of ff at same level.
-    The pairs of ff should have the same light level.
-    The first 2 images in the list must be bias
-    To eliminate the FPN, the 'shotnoise' image is computed as the subtraction
-    of two debiased flat field images
-    optional kargs arguments:
-    FACTOR (default = 2.0)
-    MAXSIGNAL (default 65535)  => compute PTC only for signal values less than MAXSIGNAL
-    VERBOSE (default=False)  ==> print out table with signal and variance
-
-    """
-
-    order = kargs.get('ORDER', 1)  # order of polynomial regression
-    if order > 2:
-        order = 2
-
-    MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
-    VERBOSE = kargs.get('VERBOSE', False)
-    ext = kargs.get('EXT', 0)
-
-    # read coordinates of first image
-    x1, x2, y1, y2 = Image(imagelist[0], ext).get_windowcoor(*coor)
-
-    oddimageindex = list(range(3, len(imagelist), 2))
-    evenimageindex = list(range(2, len(imagelist), 2))
-
-    #Read in bias1 and bias2
-    bias1 = Image(imagelist[0], ext).crop(x1, x2, y1, y2)
-    bias2 = Image(imagelist[1], ext).crop(x1, x2, y1, y2)
-
-    bias_dif = bias2 - bias1
-    # mask out all pixels with value greater or lower than  3*std
-    bias_dif.mask()
-
-    # Separate images in even and odd (crop the images..)
-    ff1 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2) for i in oddimageindex]
-    ff2 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2) for i in evenimageindex]
-
-    # remove bias from both ff images
-    ff1d = [(image - bias1) for image in ff1]
-    ff2d = [(image - bias2) for image in ff2]
-
-    if kargs.get('USE_FFMEAN', False):
-        ffmean = [(image1/image2)*image2.mean() for image1, image2 in zip(ff1d, ff2d)]
-    else:
-        ffmean = [(image1+image2)/2.0 for image1, image2 in zip(ff1d, ff2d)]
-
-    shotnoise = [(image1 - image2) for image1, image2 in zip(ff1d, ff2d)]
-
-    signal = [image.mean() for image in ff1d]  # ffmean]
-    variance = [image.var()/2.0 for image in shotnoise]
-
-    # Need to sort both signal and variance according to list containing mean signal
-    zipped = zip(signal, variance)
-    zipped_sorted = sorted(zipped)
-
-    # remove signal,variance pairs where signal is above MAXSIGNAL
-    zipped_sorted = [x for x in zipped_sorted if x[0] <= MAXSIGNAL]
-
-    # Now we unpack to get back signal and variance sorted
-    signal, variance = zip(*zipped_sorted)
-
-    if kargs.get('VERBOSE', False):
-        print('Mean signal    Variance')
-        for s, v in zip(signal, variance):
-            print(' {:6.1f}   {:6.1f}'.format(s, v))
-
-    # compute polynomial coeficients
-    coefts = np.polyfit(signal, variance, order)
-    polyts = np.poly1d(coefts)
-    # compute the fitted values for variance
-    variance_fitted = np.polyval(polyts, signal)
-
-    #print('Intercept = {}'.format(polyts(0)))
-
-    fig = plt.figure()  # create a figure object
-    ax = fig.add_subplot(1, 1, 1)  # create an axes object in the figure
-
-    ax.set_ylabel('Variance')
-    ax.set_xlabel('Signal')
-    ax.grid(True)
-    ax.set_title('Photon Transfer Curve')
-
-    # plot variance v/s signal
-    # figure()
-    ax.plot(signal, variance, 'b.')
-    ax.plot(signal, variance_fitted, 'r-')
-
-    cf = 1/coefts[0]
-
-    if order == 1:
-        cf = 1/coefts[0]
-        print('Extension: {}   CF = {:2.3f} -e/ADU   RON = {:2.3f} -e'.format(ext,
-                                                                              cf, cf * bias_dif.std()/np.sqrt(2.0)))
-    elif order == 2:
-        cf = 1/coefts[1]
-        print('Extension: {}   CF = {:2.3f} -e/ADU   RON = {:2.3f} -e'.format(ext,
-                                                                              cf, cf * bias_dif.std()/np.sqrt(2.0)))
-
-
 def ptc_irffpairs(imagelist, *coor, **kargs):
     """
     TODO: Need to be finished !!
@@ -778,7 +863,7 @@ def ptcloglog(imagelist, *coor, **kargs):
     x1, x2, y1, y2 = imagelist[0].get_windowcoor(*coor)
     print("No error")
 
-    #Read in bias
+    # Read in bias
     bias = imagelist[0]
 
     # For all images, compute signal, std and variance
@@ -798,7 +883,7 @@ def ptcloglog(imagelist, *coor, **kargs):
     # plot variance v/s signal
     plt.figure()
     # plot(meansig,masked_variance,'b.')
-    #plot(signal, variance, 'b.')
+    # plot(signal, variance, 'b.')
     # plot(signal[:-3],polyts[:-3],'r-')
 
     # Plot the curves
