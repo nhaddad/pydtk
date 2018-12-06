@@ -148,9 +148,15 @@ def linearity_residual(imagelist, *coor, **kargs):
     """
     Compute linearity residual using an image list starting
     with 2 bias and then pairs of FF at diferent levels
+    LR = 100*(1 -(Sm/Tm)/(S/t))
 
 
     """
+    MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
+    VERBOSE = kargs.get('VERBOSE', False)
+
+    # read coordinates of first image
+    x1, x2, y1, y2 = Image(imagelist[0], ext).get_windowcoor(*coor)
 
 
 def ptc_ffpairs(imagelist, *coor, **kargs):
@@ -419,6 +425,7 @@ def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
 
     nstd = kargs.get('NSTD', 3)  # factor to elliminate outlayers
     order = kargs.get('ORDER', 2)
+    axis = kargs.get('AXIS', 1)  # columns
 
     dbiasff1, dbiasff2 = correctTDIShift(bias, tdi1, tdi2)
 
@@ -445,8 +452,105 @@ def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
     sn_masked = np.ma.masked_where(np.ma.getmask(snarray_mask), shotnoise.get_data())
     shotnoise.data = sn_masked
 
-    signalmean = signal.mean(RETURN=True, AXIS=1)
-    variance = shotnoise.var(RETURN=True, AXIS=1)/2.0
+    signalmean = signal.mean(RETURN=True, AXIS=axis)
+    variance = shotnoise.var(RETURN=True, AXIS=axis)/2.0
+    cf = signalmean/variance
+
+    # fit line using all data (later we eliminate wrong values by masking )
+    coefts = np.polyfit(signalmean, variance, order)
+    polycoef = np.poly1d(coefts)
+    var_fitted = np.polyval(polycoef, signalmean[:])
+
+    # if RETURN equal True, return signal_masked, variance masked, fitted variance and CF
+    if kargs.get('RETURN', False):
+        if order == 1:
+            return signalmean, variance, var_fitted, (1/coefts[0])
+        else:
+            return signalmean, variance, var_fitted, (1/coefts[1])
+
+    else:
+        f, (ax1, ax2) = plt.subplots(1, 2, sharey=False, figsize=(10, 5))
+        # plot variance vs signal without masking yet
+        # ax1.plot(orig_signal, orig_var, '.b')
+        ax1.plot(signalmean, cf, '.b')
+        ax1.grid()
+        ax1.set_title('Photon Transfer Curve')
+        ax1.set_ylabel('Variance [ADU]**2')
+        ax1.set_xlabel('Signal [ADU]')
+
+        # plot variance vs signal WITH masking
+        ax2.plot(signalmean, variance, '.b', signalmean, var_fitted, 'r')
+        ax2.grid()
+        title = 'PTC  CF=%f'
+        if order == 2:
+            title = title % (1/coefts[1])
+        else:
+            title = title % (1/coefts[0])
+        ax2.set_title(title)
+        ax2.set_ylabel('Variance [ADU]**2')
+        ax2.set_xlabel('Signal [ADU]')
+
+
+def ptc_2ff(bias, ff1, ff2, *coor, **kargs):
+    """
+    Perform ptc plot with one bias and 2 tdi images.
+    ex:
+    ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170)
+    compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] plot the ptc curve and compute the CF using
+    a first order polynomia
+
+    ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170, RETURN=True)
+    compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] return the vectors and the CF, using
+    a first order polynomia
+
+    ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170, ORDER=2)
+    compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] plot the ptc curve, and use a
+    polynomia of order 2
+
+
+    The 2 tdi images should have a slope in flux to compute the ptc.
+    To eliminate the FPN, the 'shotnoise' image is computed as the subtraction
+    of two debiased flat field images
+    optional kargs arguments:
+    NSTD (default = 3) Default number of std deviation to elliminate outlayers
+    VERBOSE (default=False)
+
+    This method can be used on the TestBench
+    """
+
+    nstd = kargs.get('NSTD', 3)  # factor to elliminate outlayers
+    order = kargs.get('ORDER', 2)
+    axis = kargs.get('AXIS', 1)  # columns
+
+    #dbiasff1, dbiasff2 = correctTDIShift(bias, tdi1, tdi2)
+    dbiasff1 = ff1 - bias
+    dbiasff2 = ff2 - bias
+
+    x1, x2, y1, y2 = dbiasff1.get_windowcoor(*coor)
+
+    dbiasff1 = dbiasff1.crop(x1, x2, y1, y2)
+    dbiasff2 = dbiasff2.crop(x1, x2, y1, y2)
+    # b1 = b1.crop(x1, x2, y1, y2)
+
+    # dbiasff1 = ff1-b1  # debiased FF1
+    # dbiasff2 = ff2-b1  # debiased FF2
+    signal = (dbiasff1+dbiasff2)/2.0  # mean signal
+    shotnoise = dbiasff1-dbiasff2
+
+    orig_signal = signal.mean(RETURN=True, AXIS=1)
+    orig_var = shotnoise.var(RETURN=True, AXIS=1)/2.0
+
+    # Shot Noise data
+    shotnoisedata = shotnoise.get_data()
+    # Compute Z score
+    zsco = stats.zscore(shotnoisedata, axis=1, ddof=1)
+    # Create mask for values outside +3/-3 std
+    snarray_mask = np.ma.masked_outside(zsco, -1.0*nstd, nstd)
+    sn_masked = np.ma.masked_where(np.ma.getmask(snarray_mask), shotnoise.get_data())
+    shotnoise.data = sn_masked
+
+    signalmean = signal.mean(RETURN=True, AXIS=axis)
+    variance = shotnoise.var(RETURN=True, AXIS=axis)/2.0
     cf = signalmean/variance
 
     # fit line using all data (later we eliminate wrong values by masking )

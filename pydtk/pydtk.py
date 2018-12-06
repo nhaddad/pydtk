@@ -80,7 +80,7 @@ class Image(object):
     Need to write docstring for Image
     '''
 
-    def __init__(self, filename=None, ext=0, slice=0, xps=0, xos=0, yps=0, yos=0, **option):
+    def __init__(self, filename=None, ext=0, slice=0, xps=0, xos=0, yps=0, yos=0, **kargs):
         """
         Initializes Image instance.
         If Image is called with another image as a parameter, then just copy all the attributes,
@@ -150,22 +150,22 @@ class Image(object):
             self.filename = 'Simulated'
             self.header = None
             self.slice = None
-            self.xf = option.get('NROWS', 512)
+            self.xf = kargs.get('NROWS', 512)
             self.xi = 0
-            self.yf = option.get('NCOLS', 512)
+            self.yf = kargs.get('NCOLS', 512)
             self.yi = 0
             self.data = np.zeros((self.xf, self.yf))
             self.shape = (self.xf, self.yf)
             # check CF, if not given, defaul to 2 [e/ADU]
-            cf = option.get('CF', 2.0)
+            cf = kargs.get('CF', 2.0)
             # check if Flux (photons/sec) different from zero
-            flux = option.get('FLUX', 0)
+            flux = kargs.get('FLUX', 0)
             # check if DIT (sec) diferent from zero
-            dit = option.get('DIT', 0)
+            dit = kargs.get('DIT', 0)
             # check if RON (e) diferent from zero
-            ron = option.get('RON', 3)
+            ron = kargs.get('RON', 3)
             # check if BIAS (ADU) diferent from zero
-            bias = option.get('BIAS', 1000)
+            bias = kargs.get('BIAS', 1000)
 
             # generate an array of NROWSxNCOLS and fill it with (flux/cf) +/- sqrt(flux/cf)
             # if DIT>0 and FLUX>0
@@ -196,8 +196,8 @@ class Image(object):
 
             # Add shadow to image if there is shadow in row and/or columns
             # check if SHADOW!=0, if not, shadow is a percentage shadow factor
-            shadowr = option.get('SHADOWR', 0)
-            shadowc = option.get('SHADOWC', 0)
+            shadowr = kargs.get('SHADOWR', 0)
+            shadowc = kargs.get('SHADOWC', 0)
             if (shadowr != 0 or shadowc != 0) and (dit > 0 and flux > 0):
                 factorr = shadowr/100.0  # express shadow in porcentage
                 factorc = shadowc/100.0
@@ -218,7 +218,7 @@ class Image(object):
 
             # Add FPN if the FPN matrix were defined for pixel, column or row, or for all of them
             # check if FPNpixel not empty, must be same dimension as self.data
-            FPNpixel = option.get('FPN_P', None)
+            FPNpixel = kargs.get('FPN_P', None)
             if isinstance(FPNpixel, np.ndarray):
                 # check if dimensions of FPN array are correct
                 if self.shape == FPNpixel.shape:
@@ -228,7 +228,7 @@ class Image(object):
                     print("Error: not same dimensions..")
 
             # check if FPNcol not empty, must be vector of dim col
-            FPNcol = option.get('FPN_C', None)
+            FPNcol = kargs.get('FPN_C', None)
             if isinstance(FPNcol, np.ndarray):
                 if self.shape[1] == len(FPNcol):
                     self.data = self.data * FPNcol
@@ -237,7 +237,7 @@ class Image(object):
                     print("Error: not same dimensions..")
 
             # check if FPNrow not empty, must be vector of dim row
-            FPNrow = option.get('FPN_R', None)
+            FPNrow = kargs.get('FPN_R', None)
             if isinstance(FPNrow, np.ndarray):
                 if self.shape[0] == len(FPNrow):
                     FPNrow = FPNrow.reshape((self.shape[0], 1))
@@ -318,7 +318,7 @@ class Image(object):
             self.yps = yps
             self.yos = yos
 
-            if option.get('NAME', False):
+            if kargs.get('NAME', False):
                 print(("Loading %s...") % filename)
 
     def findheaderkeyword(self, wildcard):
@@ -400,7 +400,7 @@ class Image(object):
         """
         self.data = np.flipud(self.data)
 
-    def filenameinfo(self, **options):
+    def filenameinfo(self, **kargs):
         """
         Syntax:
         im.filenameinfo()
@@ -408,7 +408,7 @@ class Image(object):
         Print the filename used to generate the image
         """
 
-        if options.get('RETURN', False):
+        if kargs.get('RETURN', False):
             return self.filename
         else:
             if isinstance(self.ext, int):
@@ -800,7 +800,7 @@ class Image(object):
                      log=logscale, range=(MIN, MAX), cumulative=CUMULATIVE)
             plt.show()
 
-    def rowstacking(self, *xcoor, **option):
+    def rowstacking(self, *xcoor, **kargs):
         """
         Syntax:
         im.rowstacking(xi,xf,MIN=190,MAX=250)
@@ -820,13 +820,13 @@ class Image(object):
         plt.xlabel('Column')
         plt.ylabel('Signal [ADUs]')
 
-        ymax = option.get('MAX', self.data.max())
-        ymin = option.get('MIX', self.data.min())
+        ymax = kargs.get('MAX', self.data.max())
+        ymin = kargs.get('MIX', self.data.min())
         plt.ylim(ymin, ymax)
 
         plt.show()
 
-    def columnstacking(self, *ycoor, **option):
+    def columnstacking(self, *ycoor, **kargs):
         """
         Syntax:
         im.columnsstacking(yi,yf,MIN=190,MAX=250)
@@ -846,8 +846,8 @@ class Image(object):
         plt.xlabel('Row')
         plt.ylabel('Signal [ADUs]')
 
-        ymax = option.get('MAX', self.data.max())
-        ymin = option.get('MIN', self.data.min())
+        ymax = kargs.get('MAX', self.data.max())
+        ymin = kargs.get('MIN', self.data.min())
         plt.ylim(ymin, ymax)
 
         plt.show()
@@ -940,7 +940,7 @@ class Image(object):
 
         return Xi, Xf, Yi, Yf
 
-    def stat(self, *coor, **option):
+    def stat(self, *coor, **kargs):
         """
         Syntax:
         im.stat(xi,xf,yi,xf[,NWX=10][,NWY=10][,SHOW=True][,SAVE=True][,TITLE='GraphTitle'][,LOG=True][,NSTD=6][FACTOR=True])
@@ -966,9 +966,9 @@ class Image(object):
 
         """
 
-        nx = option.get('NWX', 10)  # use 10 windows in X by default
-        ny = option.get('NWY', 10)  # use 10 windows in Y by default
-        bins = option.get('BINS', 50)  # use 50 bins for histogram by default
+        nx = kargs.get('NWX', 10)  # use 10 windows in X by default
+        ny = kargs.get('NWY', 10)  # use 10 windows in Y by default
+        bins = kargs.get('BINS', 50)  # use 50 bins for histogram by default
 
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
@@ -980,7 +980,7 @@ class Image(object):
         aux_mean = np.zeros((nx, ny))
         aux_median = np.zeros((nx, ny))
 
-        windows = subwindowcoor(Xi, Xf, Yi, Yf, **option)  # windows is a generator of subwindows
+        windows = subwindowcoor(Xi, Xf, Yi, Yf, **kargs)  # windows is a generator of subwindows
         # for each sub window compute std, mean and median
         for i, j, xi, xf, yi, yf in windows:
             # This should work no matter the image orientation!
@@ -988,7 +988,7 @@ class Image(object):
             aux_mean[i, j] = np.mean(self[xi:xf, yi:yf], axis=None)
             aux_median[i, j] = np.median(self[xi:xf, yi:yf], axis=None)
 
-            if option.get('PRINT', False):
+            if kargs.get('PRINT', False):
                 print(("%4d %4d %4d %4d %7.3f %7.3f %7.3f") %
                       (xi, xf, yi, yf, aux_std[i, j], aux_mean[i, j], aux_median[i, j]))
 
@@ -999,7 +999,7 @@ class Image(object):
         medstd = np.median(aux_std, axis=None)  # median value of standard deviation
 
         # if RETURN is True, return tuple with mean and std
-        if option.get('RETURN'):
+        if kargs.get('RETURN'):
             return (meanval, medianval, medstd, stdstd)
 
         # TODO print the correct window used for the computation
@@ -1018,7 +1018,7 @@ class Image(object):
         im.shape = (im.shape[0]*im.shape[1], )
 
         # number of standard deviations to define the mask
-        nstd = option.get('NSTD', 6)
+        nstd = kargs.get('NSTD', 6)
         # generate a mask with all values inside +/- 5*stddev
         # TODO: Check if this is the best way to produce a mask, or maybe use masked array....
         mask1 = im < (meanval + nstd*medstd)
@@ -1026,7 +1026,7 @@ class Image(object):
         # mask = mask1*mask2
         plt.figure()
         # TODO : Check why histogram is wrong with NSTD less than 6
-        if option.get('LOG', False):
+        if kargs.get('LOG', False):
             plt.hist(im, list(np.linspace((meanval - nstd*medstd),
                                           (meanval + nstd*medstd), bins)), histtype='step', log='True')
         else:
@@ -1036,8 +1036,8 @@ class Image(object):
         plt.grid()
         plt.ylabel('Frequency')
         plt.xlabel('Signals [ADU]')
-        if option.get('TITLE', ''):
-            plt.title('Histogram of pixel values for %s' % option.get('TITLE'))
+        if kargs.get('TITLE', ''):
+            plt.title('Histogram of pixel values for %s' % kargs.get('TITLE'))
         else:
             plt.title('Histogram of pixel values')
         plt.figtext(0.15, 0.8, 'Mean=%8.2f ADUs' % meanval, fontsize=9,
@@ -1046,9 +1046,9 @@ class Image(object):
                     fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
         plt.figtext(0.15, 0.65, 'Window:[%d:%d,%d:%d]' % (
             Xi, Xf, Yi, Yf), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
-        if option.get('CF'):
-            cf = option.get('CF')
-            if option.get('FACTOR'):
+        if kargs.get('CF'):
+            cf = kargs.get('CF')
+            if kargs.get('FACTOR'):
                 factor = np.sqrt(2.0)
             else:
                 factor = 1.0
@@ -1061,12 +1061,12 @@ class Image(object):
             # figtext(0.15,0.7,'RMS   = %7.3f  +/-%7.3f ADUs' % (medstd,stdstd/sqrt(2.0)),fontsize=9,bbox=dict(facecolor='yellow', alpha=0.5))
             plt.figtext(0.15, 0.7, 'RMS   = %7.3f  +/-%7.3f ADUs' %
                         (medstd, stdstd), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
-        if option.get('SAVE'):
-            if option.get('TITLE', self.filename):
-                name = option.get('TITLE')
+        if kargs.get('SAVE'):
+            if kargs.get('TITLE', self.filename):
+                name = kargs.get('TITLE')
                 name = name.replace(' ', '_')
             plt.savefig('Statistic_'+name+'.png')
-        if option.get('SHOW', False):
+        if kargs.get('SHOW', False):
             plt.show()
 
     # TODO: Must be finished
@@ -1091,7 +1091,7 @@ class Image(object):
 
         return y0pos, np.array(spectra)  # convert list to array
 
-    def avecol(self, *ycoor, **option):
+    def avecol(self, *ycoor, **kargs):
         """
         Average and plot the columns data starting from yi till yf
         Syntax:
@@ -1110,12 +1110,12 @@ class Image(object):
 
         y1, y2 = self.get_ycoor(*ycoor)
 
-        if not option.get('RETURN', False):
-            OVERPLOT = option.get('OVERPLOT', False)
+        if not kargs.get('RETURN', False):
+            OVERPLOT = kargs.get('OVERPLOT', False)
             if not OVERPLOT:
                 plt.figure()
             plt.grid()
-            plottitle = option.get('TITLE', '')
+            plottitle = kargs.get('TITLE', '')
             plt.title(plottitle+'\n'+' Col Avrg @ (%d:%d)' % (y1, y2))
             plt.xlabel('Rows')
             plt.ylabel('Signal [ADUs]')
@@ -1124,19 +1124,19 @@ class Image(object):
             xi, xf = plt.xlim()
             yi, yf = plt.ylim()
 
-            xl = option.get('XMIN', None)
-            xm = option.get('XMAX', None)
-            yl = option.get('YMIN', None)
-            ym = option.get('YMAX', None)
+            xl = kargs.get('XMIN', None)
+            xm = kargs.get('XMAX', None)
+            yl = kargs.get('YMIN', None)
+            ym = kargs.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
             # figtext(0.15,0.85,'Columns Average @ Y(%d:%d)' % (y1,y2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.show()
-            if option.get('SAVE'):
+            if kargs.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
-                name = option.get('TITLE', self.filename)
+                name = kargs.get('TITLE', self.filename)
                 # TODO Remove .fits from self.filename
                 name = name.replace('.fits', '')
                 name = name.replace(' ', '_')
@@ -1145,7 +1145,7 @@ class Image(object):
             return None
         return np.mean(self[self.xi:self.xf, y1:y2], axis=1)
 
-    def mediancol(self, *ycoor, **option):
+    def mediancol(self, *ycoor, **kargs):
         """Average and plot the columns starting from  yi till  yf
         Syntax:
         im.mediancol(yi,yf[,XMIN=xmin,XMAX=xmax,YMIN=ymin,YMAX=ymax,RETURN=True/False][,OVERPLOT=True][,SAVE=True][TITLE='text'])
@@ -1162,12 +1162,12 @@ class Image(object):
 
         y1, y2 = self.get_ycoor(*ycoor)
 
-        if not option.get('RETURN', False):
-            OVERPLOT = option.get('OVERPLOT', False)
+        if not kargs.get('RETURN', False):
+            OVERPLOT = kargs.get('OVERPLOT', False)
             if not OVERPLOT:
                 plt.figure()
             plt.grid()
-            plottitle = option.get('TITLE', '')
+            plottitle = kargs.get('TITLE', '')
             plt.title(plottitle+'\n' + 'Col Median @ (%d:%d)' % (y1, y2))
             # title('Y axis Median')
             plt.xlabel('Rows')
@@ -1176,19 +1176,19 @@ class Image(object):
 
             xi, xf = plt.xlim()
             yi, yf = plt.ylim()
-            xl = option.get('XMIN', None)
-            xm = option.get('XMAX', None)
-            yl = option.get('YMIN', None)
-            ym = option.get('YMAX', None)
+            xl = kargs.get('XMIN', None)
+            xm = kargs.get('XMAX', None)
+            yl = kargs.get('YMIN', None)
+            ym = kargs.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
             # figtext(0.15,0.85,'Y axis Median @ Y(%d:%d)' % (y1,y2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.show()
-            if option.get('SAVE'):
+            if kargs.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
-                name = option.get('TITLE', self.filename)
+                name = kargs.get('TITLE', self.filename)
                 # TODO Remove .fits from self.filename
                 name = name.replace('.fits', '')
                 name = name.replace(' ', '_')
@@ -1197,7 +1197,7 @@ class Image(object):
             return None
         return np.median(self[self.xi:self.xf, y1:y2], axis=1)
 
-    def averow(self, *xcoor, **option):
+    def averow(self, *xcoor, **kargs):
         """
         Syntax: im.averow(xi,xf[,XMIN=xmin,XMAX=xmax,YMIN=ymin,YMAX=ymax,RETURN=True/False][,OVERPLOT=True][,SAVE=True][TITLE='text'])
 
@@ -1216,12 +1216,12 @@ class Image(object):
 
         x1, x2 = self.get_xcoor(*xcoor)
 
-        if not option.get('RETURN', False):  # instead of plotting, return a vector
-            OVERPLOT = option.get('OVERPLOT', False)
+        if not kargs.get('RETURN', False):  # instead of plotting, return a vector
+            OVERPLOT = kargs.get('OVERPLOT', False)
             if not OVERPLOT:
                 plt.figure()
             plt.grid()
-            plottitle = option.get('TITLE', '')
+            plottitle = kargs.get('TITLE', '')
             plt.title(plottitle+'\n' + ' Row Avrg @ (%d:%d)' % (x1, x2))
             # title('Row Average '+plottitle)
             plt.xlabel('Columns')
@@ -1230,27 +1230,27 @@ class Image(object):
             plt.plot(np.mean(self[x1:x2, self.yi:self.yf], axis=0))
             # xi, xf = plt.xlim()
             # yi, yf = plt.ylim()
-            xl = option.get('XMIN', None)
-            xm = option.get('XMAX', None)
-            yl = option.get('YMIN', None)
-            ym = option.get('YMAX', None)
+            xl = kargs.get('XMIN', None)
+            xm = kargs.get('XMAX', None)
+            yl = kargs.get('YMIN', None)
+            ym = kargs.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
             # figtext(0.15,0.85,'Row Average @ X(%d:%d)' % (x1,x2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
             plt.show()
             # TODO Add datetime to saved file to make it unique
-            if option.get('SAVE'):
+            if kargs.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
-                if option.get('TITLE'):
-                    name = option.get('TITLE', self.filename)
+                if kargs.get('TITLE'):
+                    name = kargs.get('TITLE', self.filename)
                     name = name.replace(' ', '_')
                 plt.savefig('RowAvrg_' + name + dtstr + '.png')
 
             return None
         return np.mean(self[x1:x2, self.yi:self.yf], axis=0)
 
-    def medianrow(self, *xcoor, **option):
+    def medianrow(self, *xcoor, **kargs):
         """
         Syntax: im.medianx(xi,xf[,XMIN=xmin,XMAX=xmax,YMIN=ymin,YMAX=ymax,RETURN=True/False])
 
@@ -1270,12 +1270,12 @@ class Image(object):
 
         x1, x2 = self.get_xcoor(*xcoor)
 
-        if not option.get('RETURN', False):
-            OVERPLOT = option.get('OVERPLOT', False)
+        if not kargs.get('RETURN', False):
+            OVERPLOT = kargs.get('OVERPLOT', False)
             if not OVERPLOT:
                 plt.figure()
             plt.grid()
-            plottitle = option.get('TITLE', '')
+            plottitle = kargs.get('TITLE', '')
             plt.title(plottitle+'\n' + ' Row Median @ (%d:%d)' % (x1, x2))
             # title('X Median')
             plt.xlabel('Columns')
@@ -1284,27 +1284,27 @@ class Image(object):
             plt.plot(np.median(self[x1:x2, self.yi:self.yf], axis=0))
             # xi, xf = plt.xlim()
             # yi, yf = plt.ylim()
-            xl = option.get('XMIN', None)
-            xm = option.get('XMAX', None)
-            yl = option.get('YMIN', None)
-            ym = option.get('YMAX', None)
+            xl = kargs.get('XMIN', None)
+            xm = kargs.get('XMAX', None)
+            yl = kargs.get('YMIN', None)
+            ym = kargs.get('YMAX', None)
             plt.xlim(xl, xm)
             plt.ylim(yl, ym)
             # figtext(0.15,0.85,'X Median @ X(%d:%d)' % (x1,x2),fontsize=11,bbox=dict(facecolor='yellow', alpha=0.5))
 
             plt.show()
-            if option.get('SAVE'):
+            if kargs.get('SAVE'):
                 dt = datetime.datetime.now()
                 dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
-                if option.get('TITLE'):
-                    name = option.get('TITLE', self.filename)
+                if kargs.get('TITLE'):
+                    name = kargs.get('TITLE', self.filename)
                     name = name.replace(' ', '_')
                 plt.savefig('RowMedian_' + name + dtstr + '.png')
 
             return None
         return np.median(self[x1:x2, self.yi:self.yf], axis=0)
 
-    def set_value(self, value=1000, *coor, **option):
+    def set_value(self, value=1000, *coor, **kargs):
         """
         Initialize all the pixels to the given value (from 0 up to 65535)
         If STD is not zero, it also adds gaussian noise with amplitud STD
@@ -1314,7 +1314,7 @@ class Image(object):
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)  # get area coordinates from coor
         self.data[Xi:Xf, Yi:Yf] = value  # fill numpy array with value
 
-        stddev = option.get('STD', 0)
+        stddev = kargs.get('STD', 0)
         if stddev != 0:
             noise = np.random.standard_normal([Xf-Xi, Yf-Yi])
             self.data[Xi:Xf, Yi:Yf] += noise*stddev
@@ -1419,7 +1419,7 @@ class Image(object):
         self.ny = ny
         print(("Xsubwindows=%d, Ysubwindows=%d") % (self.nx, self.ny))
 
-    def fftcol(self, ReadOutSpeed=100, Vdelay=5, ColStart=None, ColEnd=None, **option):
+    def fftcol(self, ReadOutSpeed=100, Vdelay=5, ColStart=None, ColEnd=None, **kargs):
         """
 
         ReadOutSpeed: speed in kps used to read the image
@@ -1443,7 +1443,7 @@ class Image(object):
 
         TODO: copy self.data to other array and remove mean level, if DEBIAS=True
         """
-        if option.get('DEBIAS', True):
+        if kargs.get('DEBIAS', True):
             data = self.data
             data = data - data.mean()
         else:
@@ -1461,28 +1461,28 @@ class Image(object):
         # multiplied by number of horizontal pixels plus the vertical delay for the parallel transfer
         Ts = Tp2p*(self.shape[1] + Vdelay)
 
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print("Time between vertical pixels: %f s" % Ts)
         # NPix is number of pixels in the column
         NPix = self.shape[0]
         ColS = ColStart
         ColE = ColEnd
 
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print("First and Last column to analyse: %d %d" % (ColS, ColE))
 
         DimFFT = 2**(nextpow2(NPix))  # find closer power of 2
         FirstPix = 0
         LastPix = DimFFT
         Fs = 1/Ts
-        if option.get('PLOT', True):
+        if kargs.get('RETURN', True):
             print("Number of original pixels: %d" % NPix)
             print("Dimension FFT: %d pix" % DimFFT)
 
         # compute freq vector for ploting
         freq = (Fs/2) * np.linspace(0, 1, num=DimFFT//2)
 
-        if option.get('PLOT', True):
+        if kargs.get('RETURN', True):
             print(("Largo freq=%d") % len(freq))
             print('')
             print("Each freq bin is equal to: ", Fs/DimFFT, " Hz")
@@ -1490,7 +1490,7 @@ class Image(object):
 
         # prepare the hanning window
         hwindow = np.hanning(DimFFT)
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print(("Largo hwindow=%d") % len(hwindow))
 
         Acum = np.zeros(DimFFT//2)
@@ -1505,16 +1505,16 @@ class Image(object):
 
         Acum = Acum/(ColE-ColS)  # take the average of the ffts
 
-        if option.get('RETURN', False):
+        if kargs.get('RETURN', False):
             # if option.get('PLOT',True):
             plt.figure()
-            binstart = option.get('BSTART', 0)
+            binstart = kargs.get('BSTART', 0)
             plt.grid()
             # skip the DC component in the plot to improve autoscale
             plt.plot(freq[binstart:], Acum[binstart:])
             plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True),
                         fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
-            note = option.get('NOTE', None)
+            note = kargs.get('NOTE', None)
             if note:
                 plt.figtext(0.15, 0.85, '%s' % note, fontsize=11,
                             bbox=dict(facecolor='yellow', alpha=0.5))
@@ -1523,15 +1523,15 @@ class Image(object):
             plt.ylabel('Intensity')
             plt.grid(True)
             plt.title('Low freq FFT analysis (Vertical transfer direction)')
-            plt.title('Average FFT on columns '+option.get('TITLE', ''))
-            if option.get('SAVE', False):
+            plt.title('Average FFT on columns '+kargs.get('TITLE', ''))
+            if kargs.get('SAVE', False):
                 plt.savefig('fftcol_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
             plt.show()
 
         else:
             return freq, Acum
 
-    def fftrow(self, ReadOutSpeed=100, RowStart=None, RowEnd=None, **option):
+    def fftrow(self, ReadOutSpeed=100, RowStart=None, RowEnd=None, **kargs):
         """
 
         ReadOutSpeed: speed in kps used to read the image
@@ -1555,7 +1555,7 @@ class Image(object):
         """
 
         # by default, remove bias level
-        if option.get('DEBIAS', True):
+        if kargs.get('DEBIAS', True):
             data = self.data
             data = data - data.mean()
         else:
@@ -1570,20 +1570,20 @@ class Image(object):
         Ts = 1.0/ReadOutSpeed
         Ts = Ts/1000.0
 
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print("Time between horizontal pixels: %f" % Ts)
         # number of pixels
         NPix = self.shape[1]
         RowS = RowStart
         RowE = RowEnd
 
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print("First and Last row to analyse: %d %d" % (RowS, RowE))
         # dimension of FFT
         DimFFT = 2**(nextpow2(NPix))
         FirstPix = 0
         LastPix = DimFFT
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print("Number of original pixels: %d" % NPix)
             print("Dimension FFT: %d pix" % DimFFT)
 
@@ -1593,7 +1593,7 @@ class Image(object):
         # compute freq vector for ploting
         freq = (Fs/2)*np.linspace(0, 1, num=DimFFT//2)
 
-        if option.get('PLOT', True):
+        if kargs.get('PLOT', True):
             print(("Length freq=%d") % len(freq))
             print('')
             print("Each freq bin is equal to: ", Fs/DimFFT, " Hz")
@@ -1601,7 +1601,7 @@ class Image(object):
 
         # prepare the hanning window
         hwindow = np.hanning(DimFFT)
-        if option.get('PLOT', True):
+        if kargs.get('RETURN', True):
             print(("Length hwindow=%d") % len(hwindow))
 
         Acum = np.zeros(DimFFT//2)
@@ -1616,16 +1616,16 @@ class Image(object):
 
         Acum = Acum/(RowE-RowS)
 
-        if option.get('RETURN', False):
+        if kargs.get('RETURN', True):
             # if option.get('PLOT',True):
             plt.figure()
-            binstart = option.get('BSTART', 0)
+            binstart = kargs.get('BSTART', 0)
             plt.grid()
             # skip the DC component in the plot to improve autoscale
             plt.plot(freq[binstart:], Acum[binstart:])
             plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True),
                         fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
-            note = option.get('NOTE', None)
+            note = kargs.get('NOTE', None)
             if note:
                 plt.figtext(0.15, 0.85, '%s' % note, fontsize=11,
                             bbox=dict(facecolor='yellow', alpha=0.5))
@@ -1633,15 +1633,15 @@ class Image(object):
             plt.xlabel('Freq [Hz] with resolution='+str(Fs/DimFFT)+' Hz')
             plt.ylabel('Intensity')
             plt.grid(True)
-            plt.title('Average FFT on rows '+option.get('TITLE', ''))
-            if option.get('SAVE', False):
+            plt.title('Average FFT on rows '+kargs.get('TITLE', ''))
+            if kargs.get('SAVE', False):
                 plt.savefig('fftrow_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
             plt.show()
 
         else:
             return freq, Acum
 
-    def fft2D(self, **option):
+    def fft2D(self, **kargs):
         """
         Perform the discrete fourier transform of an image.
         First it crop the image to the closest power of 2
@@ -1715,7 +1715,7 @@ class Image(object):
 
         self.data += noise*stddev
 
-    def addsinusoidalnoise(self, fnvector, ampvector, rofreq, vdelay, **options):
+    def addsinusoidalnoise(self, fnvector, ampvector, rofreq, vdelay, **kargs):
         """
         Add sinusoidal noise of frequencies contained in an array.
         fnvector: vector with noise frequencies to inject in Hertz
@@ -1730,7 +1730,7 @@ class Image(object):
 
         """
 
-        jit = options.get('JITTER', 0)
+        jit = kargs.get('JITTER', 0)
         jitter = jit * (10**-9)
 
         pixeltime = 1.0/(rofreq*1000)
