@@ -271,6 +271,12 @@ def ron_adu(b1, b2, *coor, **kargs):
 
     Syntax:
     ron_adu(b1, b2, 200,400, 300, 600)
+    ron_adu(b1, b2, 200,400, 300, 600, PRINT=True)  Print individual values
+    ron_adu(b1, b2, 200,400, 300, 600, HIST=True)   Plot histogram
+
+    TODO: return mean instead of median
+    DONE: make histogram plot
+    DONE: provide RETURN option
 
     """
 
@@ -279,23 +285,32 @@ def ron_adu(b1, b2, *coor, **kargs):
 
     x1, x2, y1, y2 = b1.get_windowcoor(*coor)
 
-    # wx=(x2-x1)//nwx    #size of every subwindow in x  NHA /
-    # wy=(y2-y1)//nwy    #size of every subwindow in y  NHA /
-
-    # now work with cropped images..
-    b1 = b1.crop(x1, x2, y1, y2)
-    b2 = b2.crop(x1, x2, y1, y2)
+    # compute difference of images
     biasdiff = b1-b2
     # prepare array to receive std values
     std_biasdiff = np.zeros((nwx, nwy))
 
-    # TODO modify to use subwindows ro generate them
+    # TODO modify to use subwindows to generate them
     # compute stddev and mean for every subwindow
     windows = subwindowcoor(x1, x2, y1, y2, **kargs)
     for i, j, xi, xf, yi, yf in windows:
-        std_biasdiff[i, j] = biasdiff[xi:xf, yi:yf].std()
-    # divide by sqrt(2)
-    return np.median(std_biasdiff, axis=None)/np.sqrt(2.0)
+        std_biasdiff[i, j] = biasdiff[xi:xf, yi:yf].std()/np.sqrt(2)
+        if kargs.get('PRINT', False):
+            print(f'[{xi:5}:{xf:5},{yi:5}:{yf:5}] => {std_biasdiff[i, j]:.3}')
+
+    diff_median = np.median(std_biasdiff, axis=None)
+
+    if kargs.get('RETURN', False):
+        return np.median(std_biasdiff, axis=None)  # /np.sqrt(2.0)
+    else:
+        print(f'RON @ [{x1}:{x2},{y1}:{y2}] = {np.median(std_biasdiff, axis=None):2.2} ADUs')
+    if kargs.get('HIST', False):
+        std_biasdiff.shape = (nwx*nwy, )
+        diff_std = np.std(std_biasdiff, axis=None)
+        print(f'StdDev = {diff_std:.2}')
+        plt.clf()
+        plt.hist(std_biasdiff, range=(diff_median - 3*diff_std, diff_median + 3*diff_std), bins=30)
+        plt.show()
 
 
 def correctTDIShift(bias, tdi1, tdi2):
