@@ -15,7 +15,7 @@ from pydtk.utils.utils import medianstack
 from pydtk.utils.utils import meanstack
 
 
-def gain(b1, b2, ff1, ff2, *coor, **kargs):
+def gain(imagelist, *coor, **kargs):
     """
     Compute the gain of the system using 2 Bias and 2 FF. The procedure devides the window
     in NWX*NWY subwindows and computes the Gain for each one of them and then computes the mean
@@ -23,12 +23,14 @@ def gain(b1, b2, ff1, ff2, *coor, **kargs):
     CCD.
 
     Syntax:
-    gain(bb1,bb2,fff1,fff2[,xi,xf,yi,yf][,NWX=10][,NWY=10][,VERBOSE=True/False][,SAVE=True][,TITLE='Graph Title'][,RETURN=True/False][, MEDIAN=True/False])
+    gain(imagelist[,xi,xf,yi,yf][,NWX=10][,NWY=10][,VERBOSE=True/False][,SAVE=True][,TITLE='Graph Title'][,RETURN=True/False][, MEDIAN=True/False])
 
+    Note: the image list must contain 2 bias and 2 ff in that order!
+    imagelist can be a list of names o list of images
     b1,b2= bias images
     f1,f2= ff images
     *coor=[xi,xf,yi,yf] = coordinates of the window to analize (should be a flat region)
-    options
+    kargs
     -------
     VERBOSE=True => print intermediate values
     TITLE='Graph Title' => put a title in the graph
@@ -37,9 +39,30 @@ def gain(b1, b2, ff1, ff2, *coor, **kargs):
     MEDIAN=True/False => default True, computes median instead of mean
     RATIO=True/FALSE => defaul True. just change the way the FPN is elliminated. Both
     methods give almost the same rusults
+    NWX= number of windows in X direction (default 10)
+    NWY= number of windows in Y direction (default 10)
+    EXT=image extension to load, default 0
 
 
     """
+    ext = kargs.get('EXT', 0)
+
+    if len(imagelist) != 4:
+        print('imagelist len different from 4')
+        exit
+
+    # check if imagelist are images or filenames
+    if all([isinstance(i, str) for i in imagelist]):
+        images = [Image(i, ext) for i in imagelist]
+        b1 = images[0]
+        b2 = images[1]
+        ff1 = images[2]
+        ff2 = images[3]
+    else:
+        b1 = imagelist[0]
+        b2 = imagelist[1]
+        ff1 = imagelist[2]
+        ff2 = imagelist[3]
 
     nwx = kargs.get('NWX', 10)  # set number of windows in x direction
     nwy = kargs.get('NWY', 10)  # set number of windows in y direction
@@ -150,7 +173,7 @@ def linearity_residual(imagelist, *coor, **kargs):
     with 2 bias and then pairs of FF at diferent levels
     LR = 100*(1 -(Sm/Tm)/(S/t))
 
-
+    TODO: need to complete!!
     """
     MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
     VERBOSE = kargs.get('VERBOSE', False)
