@@ -658,7 +658,8 @@ class Image(object):
         Syntax:
         im.var(xi,xf,yi,yf)
 
-        Computes the variance for the image. If no coordinates are specified, the full image is used
+        Computes the variance for the image. If no coordinates are specified,
+        the full image is used
         """
         axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
@@ -670,18 +671,19 @@ class Image(object):
         Syntax:
         im.var(xi,xf,yi,yf)
 
-        Computes the standard deviation value for the image. If no coordenates are specified, the full image is used
+        Computes the standard deviation value for the image. If no coordenates
+        are specified, the full image is used
         """
         axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
         return np.std(self[Xi:Xf, Yi:Yf], axis=axis)
 
-    def mask(self, FACTOR=3.0, *coor):
+    def mask(self, NSTD=3.0, *coor, **kargs):
         """
         Syntax:
         im.mask()
-        im.mask(FACTOR=5.0)
+        im.mask(NSTD=5.0)
         im.mask(STD=2.0,100,400,500,800)
 
         Converts the image data into masked array with all the values +/- FACTOR*std masked out
@@ -689,7 +691,11 @@ class Image(object):
         immean = self.mean(*coor)
 
         imstd = self.std(*coor)
-        self.data = np.ma.masked_outside(self.data, immean-FACTOR*imstd, immean+FACTOR*imstd)
+        self.data = np.ma.masked_outside(self.data, immean-NSTD*imstd, immean+NSTD*imstd)
+        if kargs.get('COUNTS', False):
+            pixels = self.shape[0]*self.shape[1]
+            non_masked = self.data.count()
+            print(f'Total pixels = {pixels}, masked pixels={pixels - non_masked}')
 
     def save(self, filename):
         """
@@ -965,12 +971,17 @@ class Image(object):
             RETURN= if True, return a tuple containing mean and median value od std
 
         """
+        # if MASK=True use masked array for computation
+        local_copy = self.copy()
+
+        if kargs.get('MASK', True):
+            local_copy.mask(**kargs)
 
         nx = kargs.get('NWX', 10)  # use 10 windows in X by default
         ny = kargs.get('NWY', 10)  # use 10 windows in Y by default
         bins = kargs.get('BINS', 50)  # use 50 bins for histogram by default
 
-        Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
+        Xi, Xf, Yi, Yf = local_copy.get_windowcoor(*coor)
 
         # wx = (Xf - Xi)//nx  #NHA /
         # wy = (Yf - Yi)/ny   #NHA /
@@ -984,9 +995,16 @@ class Image(object):
         # for each sub window compute std, mean and median
         for i, j, xi, xf, yi, yf in windows:
             # This should work no matter the image orientation!
-            aux_std[i, j] = np.std(self[xi:xf, yi:yf], axis=None)
-            aux_mean[i, j] = np.mean(self[xi:xf, yi:yf], axis=None)
-            aux_median[i, j] = np.median(self[xi:xf, yi:yf], axis=None)
+            aux_std[i, j] = np.std(local_copy[xi:xf, yi:yf], axis=None)
+            aux_mean[i, j] = np.mean(local_copy[xi:xf, yi:yf], axis=None)
+            # median doesn't work in masked arrays...
+            aux_median[i, j] = np.median(local_copy.get_data()[xi:xf, yi:yf], axis=None)
+            '''
+            if kargs.get('MASK', True):
+                aux_median[i, j] = np.median(self.get_data()[xi:xf, yi:yf], axis=None)
+            else:
+                aux_median[i, j] = np.median(self[xi:xf, yi:yf], axis=None)
+            '''
 
             if kargs.get('PRINT', False):
                 print(("%4d %4d %4d %4d %7.3f %7.3f %7.3f") %
@@ -1006,15 +1024,15 @@ class Image(object):
         print("")
         print(("Window analyzed: X(%d,%d)  Y(%d,%d) divided in %d subwindows") %
               (Xi, Xf, Yi, Yf, nx*ny))
-        print(("MaxVal=%8.2f  ADUs") % self[Xi:Xf, Yi:Yf].max())
-        print(("MinVal=%8.2f  ADUs") % self[Xi:Xf, Yi:Yf].min())
+        print(("MaxVal=%8.2f  ADUs") % local_copy[Xi:Xf, Yi:Yf].max())
+        print(("MinVal=%8.2f  ADUs") % local_copy[Xi:Xf, Yi:Yf].min())
         print("")
         print(("Mean  = %8.2f +/-%7.3f ADUs") % (meanval, medstd))
         print(("Median= %8.2f +/-%7.3f ADUs") % (medianval, medstd))
         print("")
         # change shape of mean array from 2D to 1D
         # TODO  window is not defined....
-        im = self[Xi:Xf, Yi:Yf].copy()
+        im = local_copy[Xi:Xf, Yi:Yf].copy()
         im.shape = (im.shape[0]*im.shape[1], )
 
         # number of standard deviations to define the mask
