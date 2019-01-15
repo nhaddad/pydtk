@@ -1441,7 +1441,24 @@ class Image(object):
             plot(freq,psd1)
             plot(freq,psd2)
 
-        TODO: copy self.data to other array and remove mean level, if DEBIAS=True
+        kargs options:
+        DEBIAS: True/False => remove mean level from signal (default=True)
+        PLOT: True/False => make a plot of the fft (default=True)
+        RETURN: True/False => return an array with the values of fft (default=False)
+        BSTART: int => starting bin in the plot, default=2 (bin 0 has the DC component)
+        NOTE: string => add note to plot
+        SAVE: True/False  => save plot
+
+        freq=b1.fftcol(RETURN=true)
+        b1.fftcol(625, 5, BSTAT=3) make fftcol with readout speed of 625K, Vertical delay = 5 pixel times
+         and start the plot from bin 3
+
+
+
+
+
+
+        DONE: copy self.data to other array and remove mean level, if DEBIAS=True
         """
         if kargs.get('DEBIAS', True):
             data = self.data
@@ -1460,7 +1477,7 @@ class Image(object):
         # Time between 2 vertical pixels is equal to time from pix to pixel
         # multiplied by number of horizontal pixels plus the vertical delay for the parallel transfer
         Ts = Tp2p*(self.shape[1] + Vdelay)
-
+        print(f'File: {self.filenameinfo(RETURN=True)}')
         if kargs.get('PLOT', True):
             print("Time between vertical pixels: %f s" % Ts)
         # NPix is number of pixels in the column
@@ -1506,14 +1523,14 @@ class Image(object):
         Acum = Acum/(ColE-ColS)  # take the average of the ffts
 
         if kargs.get('RETURN', False):
-            # if option.get('PLOT',True):
+            return freq, Acum
+        if kargs.get('PLOT', True):
             plt.figure()
-            binstart = kargs.get('BSTART', 0)
+            binstart = kargs.get('BSTART', 2)
             plt.grid()
             # skip the DC component in the plot to improve autoscale
             plt.plot(freq[binstart:], Acum[binstart:])
-            plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True),
-                        fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+
             note = kargs.get('NOTE', None)
             if note:
                 plt.figtext(0.15, 0.85, '%s' % note, fontsize=11,
@@ -1527,9 +1544,6 @@ class Image(object):
             if kargs.get('SAVE', False):
                 plt.savefig('fftcol_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
             plt.show()
-
-        else:
-            return freq, Acum
 
     def fftrow(self, ReadOutSpeed=100, RowStart=None, RowEnd=None, **kargs):
         """
@@ -1552,6 +1566,18 @@ class Image(object):
         psd2=b2.fftrow(PLOT=False)
         plot(freq,psd1)
         plot(freq,psd2)
+
+        kargs options:
+        DEBIAS: True/False => remove mean level from signal (default=True)
+        PLOT: True/False => make a plot of the fft (default=True)
+        RETURN: True/False => return an array with the values of fft (default=False)
+        BSTART: int => starting bin in the plot, default=2 (bin 0 has the DC component)
+        NOTE: string => add note to plot
+        SAVE: True/False  => save plot
+
+        freq=b1.fftcol(RETURN=true)
+        b1.fftrow(625, 5, BSTAT=3) make fftrow with readout speed of 625K, Vertical delay = 5 pixel times
+         and start the plot from bin 3
         """
 
         # by default, remove bias level
@@ -1569,6 +1595,8 @@ class Image(object):
         # pixel time
         Ts = 1.0/ReadOutSpeed
         Ts = Ts/1000.0
+
+        print(f'File: {self.filenameinfo(RETURN=True)}')
 
         if kargs.get('PLOT', True):
             print("Time between horizontal pixels: %f" % Ts)
@@ -1616,15 +1644,17 @@ class Image(object):
 
         Acum = Acum/(RowE-RowS)
 
-        if kargs.get('RETURN', True):
+        if kargs.get('RETURN', False):
+            return freq, Acum
+
+        if kargs.get('PLOT', True):
             # if option.get('PLOT',True):
             plt.figure()
-            binstart = kargs.get('BSTART', 0)
+            binstart = kargs.get('BSTART', 2)
             plt.grid()
             # skip the DC component in the plot to improve autoscale
             plt.plot(freq[binstart:], Acum[binstart:])
-            plt.figtext(0.15, 0.8, '%s' % self.filenameinfo(RETURN=True),
-                        fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+
             note = kargs.get('NOTE', None)
             if note:
                 plt.figtext(0.15, 0.85, '%s' % note, fontsize=11,
@@ -1638,17 +1668,20 @@ class Image(object):
                 plt.savefig('fftrow_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
             plt.show()
 
-        else:
-            return freq, Acum
-
     def fft2D(self, **kargs):
         """
         Perform the discrete fourier transform of an image.
         First it crop the image to the closest power of 2
 
+        kargs:
+        NSTD (default=1) number of stddev used to define lower and upper cut
+        levels
 
         """
-        image = self.data
+
+        # remove mean value
+        image = self.data - self.data.mean()
+        print(self.data.mean())
         Dim = 2**nextpow2(min(image.shape))
         # now crop image to this Dim
         image = image[:Dim, :Dim]
@@ -1656,7 +1689,9 @@ class Image(object):
         freqshifted = np.fft.fftshift(freq)
         logfreq = np.log(freqshifted)
         # plt.hist(logfreq.ravel(),bins=100)
-        plt.imshow(logfreq, interpolation="none")
+        vmin = logfreq.mean() - kargs.get('NSTD', 1)*logfreq.std()
+        vmax = logfreq.mean() + kargs.get('NSTD', 1)*logfreq.std()
+        plt.imshow(logfreq, vmin=vmin, vmax=vmax, interpolation="none", cmap='gray')
         return logfreq
 
     def bitcounts(self, *coor):
