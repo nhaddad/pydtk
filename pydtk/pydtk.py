@@ -56,25 +56,6 @@ class ObjectNotAnString(Exception):
     pass
 
 
-def genspectralimits(image, x0, y0, width, angle=1.518):
-    """
-    Generator that yields coordinates of the tilted spectra to be
-    used for spectra  extraction
-    x0, y0: coordinates of lower left point of the line that pass through the left side
-    of the slit
-    width: width in pixels of the slit
-    angle: angle in radians obtained by spectralangle function or computed by hand
-
-
-    example:  limits = genspectrallimits(1000,0,30, angle=1.52)
-
-    """
-
-    for y in range(image.shape[0]):
-        x = int((1/np.tan(angle))*(y - y0) + x0)
-        yield y, x, x + width
-
-
 class Image(object):
     '''
     Need to write docstring for Image

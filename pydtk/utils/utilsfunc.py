@@ -7,6 +7,7 @@ Created on Sun May 13 17:57:25 2018
 """
 import numpy as np
 
+
 def nextpow2(number):
     """
     Find 2^n that is equal to or less than number
@@ -21,6 +22,7 @@ def nextpow2(number):
 
     """
     return int(np.log2(number))
+
 
 def subwindowcoor(*coor, **kargs):
     """
@@ -44,28 +46,51 @@ def subwindowcoor(*coor, **kargs):
 
 
     """
-    nwx = kargs.get('NWX', 10)    #set number of windows in x direction
-    nwy = kargs.get('NWY', 10)    #set number of windows in y direction
-
+    nwx = kargs.get('NWX', 10)  # set number of windows in x direction
+    nwy = kargs.get('NWY', 10)  # set number of windows in y direction
 
     x1, x2, y1, y2 = coor
 
-    wx = (x2-x1)//nwx    #size of every subwindow in x
-    wy = (y2-y1)//nwy    #size of every subwindow in y
+    wx = (x2-x1)//nwx  # size of every subwindow in x
+    wy = (y2-y1)//nwy  # size of every subwindow in y
 
     for i in range(nwx):
         for j in range(nwy):
-            if i==0:
-                xi = x1+ i * wx
+            if i == 0:
+                xi = x1 + i * wx
 
             else:
-                xi = x1 + i * wx +1
+                xi = x1 + i * wx + 1
 
-            if j==0:
-                yi = y1+ j * wy
+            if j == 0:
+                yi = y1 + j * wy
             else:
-                yi = y1+ j * wy +1
+                yi = y1 + j * wy + 1
 
-            xf = x1+ ( i + 1 ) * wx #- 1
-            yf = y1+ (j+1) * wy #- 1
-            yield(i,j,xi,xf,yi,yf)
+            xf = x1 + (i + 1) * wx  # - 1
+            yf = y1 + (j+1) * wy  # - 1
+            yield(i, j, xi, xf, yi, yf)
+
+
+def genspectralimits(image, x0, y0, width, angle=1.518):
+    """
+    Generator that yields coordinates of the tilted spectra to be
+    used for spectra  extraction
+    x0, y0: coordinates of lower left point of the line that pass through the left side
+    of the slit
+    width: width in pixels of the slit
+    angle: angle in radians obtained by spectralangle function or computed by hand
+
+
+    example:  limits = genspectrallimits(1000,0,30, angle=1.52)
+
+    TODO: modify this in such a way that uses a flat field image to detect
+    the position of the spectral lines
+
+    TODO: move it to "utils"
+
+    """
+
+    for y in range(image.shape[0]):
+        x = int((1/np.tan(angle))*(y - y0) + x0)
+        yield y, x, x + width
