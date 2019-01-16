@@ -84,11 +84,10 @@ def gain(imagelist, *coor, **kargs):
     # print(ratio)
 
     if kargs.get('VERBOSE', False):
-        print("format images X=%d pix Y=%d pix" % b1.format())
-        print(("Nx:%d Ny:%d X1:%d X2:%d Y1:%d Y2:%d WX:%d WY:%d") %
-              (nwx, nwy, x1, x2, y1, y2, (x2-x1)//nwx, (y2-y1)//nwy))  # NHA /
-        print("")
-        print("meanff2 =%f" % meanff2)
+        print(f'format images X={b1.shape[0]} pix Y={b1.shape[1]} pix')
+        print(f'Nx:{nwx} Ny:{nwy} X1:{x1} X2:{x2} Y1:{y1} Y2:{y2} WX:{(x2-x1)//nwx} WY:{(y2-y1)//nwy}')
+        print('')
+        print(f'meanff2 ={meanff2}')
 
     dbiasff2 = dbiasff2*ratio
     dbias_ff_diff = dbiasff1 - dbiasff2
@@ -117,8 +116,8 @@ def gain(imagelist, *coor, **kargs):
         stdbias[i, j] = np.std(dbias[xi:xf, yi:yf])/np.sqrt(2.0)
 
         if kargs.get('VERBOSE', False):
-            print(("X(%d,%d) Y(%d,%d) Mean:%7.2f stdff:%7.3f  CF:%5.3f") %
-                  (xi+x1, xf+x1, yi+y1, yf+y2, meansig[i, j], stdsig[i, j], cf[i, j]))
+            print(
+                f"X({xi+x1},{xf+x1}) Y({yi+y1},{yf+y2}) Mean:{meansig[i, j]:.2f} stdff:{stdsig[i, j]:.2f}  CF:{cf[i, j]:.2f}")
 
     if kargs.get('MEDIAN', True):
         ConFac = np.median(cf, axis=None)
@@ -140,9 +139,9 @@ def gain(imagelist, *coor, **kargs):
         plt.figure()
 
     print("*******************************************")
-    print(("*CF  =%5.3f +/-%5.3f e/ADU") % (ConFac, CFstd))
-    print(("*RON =%6.3f -e") % (RONe))
-    print(("*RON =%6.3f ADUs") % RON)
+    print(f"*CF  ={ConFac:.2f} +/-{CFstd:.2f} e/ADU")
+    print(f"*RON ={RONe:.3f} -e")
+    print(f"*RON ={RON:.3f} ADUs")
     print("*******************************************")
 
     # change shape of cf array to later compute the standard deviation and also make the histogram
@@ -252,7 +251,7 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
     if kargs.get('VERBOSE', False):
         print('Mean signal    Variance')
         for s, v in zip(signal, variance):
-            print(' {:6.1f}   {:6.1f}'.format(s, v))
+            print(f' {s:6.1f}   {v:6.1f}')
 
     # compute polynomial coeficients
     coefts = np.polyfit(signal, variance, order)
@@ -279,12 +278,12 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
 
     if order == 1:
         cf = 1/coefts[0]
-        print('Extension: {}   CF = {:2.3f} -e/ADU   RON = {:2.3f} -e'.format(ext,
-                                                                              cf, cf * bias_dif.std()/np.sqrt(2.0)))
+        print(
+            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * bias_dif.std()/np.sqrt(2.0):2.3f}')
     elif order == 2:
         cf = 1/coefts[1]
-        print('Extension: {}   CF = {:2.3f} -e/ADU   RON = {:2.3f} -e'.format(ext,
-                                                                              cf, cf * bias_dif.std()/np.sqrt(2.0)))
+        print(
+            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * bias_dif.std()/np.sqrt(2.0):2.3f} -e')
 
 
 def ron_adu(b1, b2, *coor, **kargs):
@@ -767,10 +766,10 @@ def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
 
     if order == 2:
         gain = 1/coefts_nf[1]
-        print("GAIN = {} -e/ADU  RON = {} -e".format(1/coefts_nf[1], gain*np.median(stdsig)))
+        print(f"GAIN = {1/coefts_nf[1]} -e/ADU  RON = {gain*np.median(stdsig)} -e")
     else:
         gain = 1/coefts_nf[0]
-        print("GAIN = {} -e/ADU  RON = {} -e".format(1/coefts_nf[0], gain*np.median(stdsig)))
+        print(f"GAIN = {1/coefts_nf[0]} -e/ADU  RON = {gain*np.median(stdsig)} -e")
 
     # ron = gain*np.median(stdsig)
     # print("RON = {} e".format(ron))
@@ -805,20 +804,20 @@ def ptc_2pixels(b1, ff1, ff2, *coor, **kargs):
     step = kargs.get('STEP', 100)  # step size, minimum is 1
     outlayers = kargs.get('OLAYERS', 0.5)  # factor to elliminate outlayers
 
-    print("Low = {}".format(low))
-    print("High = {}".format(high))
-    print("Step = {}".format(step))
-    print("outlayers = {}".format(outlayers))
+    print(f"Low = {low}")
+    print(f"High = {high}")
+    print(f"Step = {step}")
+    print(f"outlayers = {outlayers}")
 
     order = kargs.get('ORDER', 1)  # order of polynomial regression
     if order > 2:
         order = 2
 
-    print("Order = {}".format(order))
+    print(f"Order = {order}")
 
     x1, x2, y1, y2 = b1.get_windowcoor(*coor)
 
-    print("{},{},{},{}".format(x1, x2, y1, y2))
+    print(f"{x1},{x2},{y1},{y2}")
 
     # crop images
     ff1c = ff1.crop(x1, x2, y1, y2)
@@ -966,7 +965,7 @@ def ptc_irffpairs(imagelist, *coor, **kargs):
         signal.append(np.mean(ffmean[x1:x2, y1:y2]))
         variance.append(np.var(shotnoise[x1:x2, y1:y2])/2.0)
         stddev.append(np.std(shotnoise[x1:x2, y1:y2])/np.sqrt(2.0))
-        print("Signal: %f   Variance: %f" % (signal[-1], variance[-1]))
+        print(f"Signal: {signal[-1]}   Variance: {variance[-1]}")
 
     coefts = ma.polyfit(signal, variance, 1)
     # coefts=ma.polyfit(signal[:-3],variance[:-3],1)
@@ -1016,7 +1015,7 @@ def ptcloglog(imagelist, *coor, **kargs):
         signal.append(np.mean(ff[x1:x2, y1:y2]))
         variance.append(np.var(ff[x1:x2, y1:y2]))
         stddev.append(np.std(ff[x1:x2, y1:y2]))
-        print("Signal: %f   Variance: %f" % (signal[-1], variance[-1]))
+        print(f"Signal: {signal[-1]}   Variance: {variance[-1]}")
 
     coefts = ma.polyfit(signal[:-3], variance[:-3], 1)
     polyts = coefts[0]*signal+coefts[1]

@@ -319,7 +319,7 @@ class Image(object):
             self.yos = yos
 
             if kargs.get('NAME', False):
-                print(("Loading %s...") % filename)
+                print(f'Loading {filename}...')
 
     def findheaderkeyword(self, wildcard):
         """
@@ -331,7 +331,7 @@ class Image(object):
 
         for key in self.header.cards:
             if key[0].find(wildcard) != -1:
-                print('%s : %s /%s' % (key[0], key[1], key[2]))
+                print(f'{key[0]} : {key[1]} /{key[2]}')
 
     def findheadercomment(self, wildcard):
         """
@@ -343,7 +343,7 @@ class Image(object):
 
         for key in self.header.cards:
             if key[2].find(wildcard) != -1:
-                print('%s : %s /%s' % (key[0], key[1], key[2]))
+                print(f'{key[0]} : {key[1]} /{key[2]}')
 
     def transpose(self):
         """
@@ -412,11 +412,12 @@ class Image(object):
             return self.filename
         else:
             if isinstance(self.ext, int):
-                print(("File name: %s, ext=%d") % (self.filename, self.ext))
+                print(f'File name: {self.filename}, ext={self.ext}')
             elif isinstance(self.ext, str):
-                print(("File name: %s, ext=%s") % (self.filename, self.ext))
-            print(("xi: %d, xf: %d") % (self.xi, self.xf))
-            print(("yi: %d, yf: %d") % (self.yi, self.yf))
+                print(f'File name: {self.filename}, ext={self.ext}')
+                # print(("File name: %s, ext=%s") % (self.filename, self.ext))
+            print(f'xi: {self.xi}, xf: {self.xf}')
+            print(f'yi: {self.yi}, yf: {self.yf}')
 
     def __getitem__(self, key):
         """
@@ -732,7 +733,7 @@ class Image(object):
         meanval = self.data[Xi:Xf, Yi:Yf].mean()
         stddev = self.data[Xi:Xf, Yi:Yf].std()
 
-        print(meanval, stddev)  # DEBUG
+        # print(meanval, stddev)  # DEBUG
 
         if (meanval-stddev) > 0:
             lowercut = meanval - stddev
@@ -763,7 +764,7 @@ class Image(object):
         plt.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax,
                    interpolation='nearest', cmap=cmap, origin='lower')
 
-        print(("Cut levels=%7.1f and %7.1f") % (vmin, vmax))
+        print(f'Cut levels={vmin} and {vmax}')
 
         plt.xlabel('Ycoor')
         plt.ylabel('Xcoor')
@@ -1007,8 +1008,8 @@ class Image(object):
             '''
 
             if kargs.get('PRINT', False):
-                print(("%4d %4d %4d %4d %7.3f %7.3f %7.3f") %
-                      (xi, xf, yi, yf, aux_std[i, j], aux_mean[i, j], aux_median[i, j]))
+                print(
+                    f'[{xi: >5d}:{xf: >5d},{yi: >5d}:{yf: >5d}] std:{aux_std[i, j]:.1f} mean:{aux_mean[i, j]:.1f} median:{aux_median[i, j]:.1f}')
 
         # Compute statistic
         medianval = np.median(aux_median, axis=None)  # median value of boxes
@@ -1021,15 +1022,14 @@ class Image(object):
             return (meanval, medianval, medstd, stdstd)
 
         # TODO print the correct window used for the computation
-        print("")
-        print(("Window analyzed: X(%d,%d)  Y(%d,%d) divided in %d subwindows") %
-              (Xi, Xf, Yi, Yf, nx*ny))
-        print(("MaxVal=%8.2f  ADUs") % local_copy[Xi:Xf, Yi:Yf].max())
-        print(("MinVal=%8.2f  ADUs") % local_copy[Xi:Xf, Yi:Yf].min())
-        print("")
-        print(("Mean  = %8.2f +/-%7.3f ADUs") % (meanval, medstd))
-        print(("Median= %8.2f +/-%7.3f ADUs") % (medianval, medstd))
-        print("")
+        print('')
+        print(f'Window analysed: [{Xi}:{Xf},{Yi}:{Yf}] devided in {nx*ny} subwindows')
+        print(f'MaxVal={local_copy[Xi:Xf, Yi:Yf].max():.2f}  ADUs')
+        print(f'MinVal={local_copy[Xi:Xf, Yi:Yf].min():.2f}  ADUs')
+        print('')
+        print(f'Mean  = {meanval:.2f} +/-{medstd:.3f} ADUs')
+        print(f'Median= {medianval:.2f} +/-{medstd:.3f} ADUs')
+        print('')
         # change shape of mean array from 2D to 1D
         # TODO  window is not defined....
         im = local_copy[Xi:Xf, Yi:Yf].copy()
@@ -1435,7 +1435,7 @@ class Image(object):
         """
         self.nx = nx
         self.ny = ny
-        print(("Xsubwindows=%d, Ysubwindows=%d") % (self.nx, self.ny))
+        print(f'Xsubwindows={self.nx}, Ysubwindows={self.ny}')
 
     def fftcol(self, ReadOutSpeed=100, Vdelay=5, ColStart=None, ColEnd=None, **kargs):
         """
@@ -1497,36 +1497,36 @@ class Image(object):
         Ts = Tp2p*(self.shape[1] + Vdelay)
         print(f'File: {self.filenameinfo(RETURN=True)}')
         if kargs.get('PLOT', True):
-            print("Time between vertical pixels: %f s" % Ts)
+            print(f'Time between vertical pixels: {Ts} s')
         # NPix is number of pixels in the column
         NPix = self.shape[0]
         ColS = ColStart
         ColE = ColEnd
 
         if kargs.get('PLOT', True):
-            print("First and Last column to analyse: %d %d" % (ColS, ColE))
+            print(f'First and Last column to analyse: {ColS} {ColE}')
 
         DimFFT = 2**(nextpow2(NPix))  # find closer power of 2
         FirstPix = 0
         LastPix = DimFFT
         Fs = 1/Ts
         if kargs.get('RETURN', True):
-            print("Number of original pixels: %d" % NPix)
-            print("Dimension FFT: %d pix" % DimFFT)
+            print(f'Number of original pixels: {NPix}')
+            print(f'Dimension FFT: {DimFFT} pix')
 
         # compute freq vector for ploting
         freq = (Fs/2) * np.linspace(0, 1, num=DimFFT//2)
 
         if kargs.get('RETURN', True):
-            print(("Largo freq=%d") % len(freq))
+            print(f'Largo freq={len(freq)}')
             print('')
-            print("Each freq bin is equal to: ", Fs/DimFFT, " Hz")
-            print("Maximum freq : ", Fs/2)
+            print(f'Each freq bin is equal to: {Fs/DimFFT} Hz')
+            print(f'Maximum freq : {Fs/2}')
 
         # prepare the hanning window
         hwindow = np.hanning(DimFFT)
         if kargs.get('PLOT', True):
-            print(("Largo hwindow=%d") % len(hwindow))
+            print(f'Largo hwindow={len(hwindow)}')
 
         Acum = np.zeros(DimFFT//2)
 
@@ -1617,21 +1617,21 @@ class Image(object):
         print(f'File: {self.filenameinfo(RETURN=True)}')
 
         if kargs.get('PLOT', True):
-            print("Time between horizontal pixels: %f" % Ts)
+            print(f'Time between horizontal pixels: {Ts}')
         # number of pixels
         NPix = self.shape[1]
         RowS = RowStart
         RowE = RowEnd
 
         if kargs.get('PLOT', True):
-            print("First and Last row to analyse: %d %d" % (RowS, RowE))
+            print(f'First and Last row to analyse: {RowS} {RowE}')
         # dimension of FFT
         DimFFT = 2**(nextpow2(NPix))
         FirstPix = 0
         LastPix = DimFFT
         if kargs.get('PLOT', True):
-            print("Number of original pixels: %d" % NPix)
-            print("Dimension FFT: %d pix" % DimFFT)
+            print(f'Number of original pixels: {NPix}')
+            print(f'Dimension FFT: {DimFFT} pix')
 
         # compute maximum freq
         Fs = 1/Ts
@@ -1640,15 +1640,15 @@ class Image(object):
         freq = (Fs/2)*np.linspace(0, 1, num=DimFFT//2)
 
         if kargs.get('PLOT', True):
-            print(("Length freq=%d") % len(freq))
+            print(f'Length freq={freq}')
             print('')
-            print("Each freq bin is equal to: ", Fs/DimFFT, " Hz")
-            print("Maximum freq : ", Fs/2)
+            print(f'Each freq bin is equal to: {Fs/DimFFT} Hz')
+            print(f'Maximum freq : {Fs/2}')
 
         # prepare the hanning window
         hwindow = np.hanning(DimFFT)
         if kargs.get('RETURN', True):
-            print(("Length hwindow=%d") % len(hwindow))
+            print(f'Length hwindow={len(hwindow)}')
 
         Acum = np.zeros(DimFFT//2)
 
@@ -1699,7 +1699,6 @@ class Image(object):
 
         # remove mean value
         image = self.data - self.data.mean()
-        print(self.data.mean())
         Dim = 2**nextpow2(min(image.shape))
         # now crop image to this Dim
         image = image[:Dim, :Dim]
@@ -1725,14 +1724,14 @@ class Image(object):
         # convert CCD data to 16 bit integers
         aux = self.data[Xi:Xf, Yi:Yf].astype(np.uint16)
 
-        print(aux.dtype)
+        # print(aux.dtype)
         totalpix = (Xf-Xi)*(Yf-Yi)
-        print(type(totalpix))
+        # print(type(totalpix))
         bitfreq_0 = []
         bitfreq_1 = []
-        print("Mean value= %f,  StdDev= %f" %
-              (np.mean(self.data[Xi:Xf, Yi:Yf]), np.std(self.data[Xi:Xf, Yi:Yf])))
-        print("Number of pixels: %d" % totalpix)
+        print(
+            f'Mean value= {np.mean(self.data[Xi:Xf, Yi:Yf])},  StdDev= {np.std(self.data[Xi:Xf, Yi:Yf])}')
+        print(f'Number of pixels: {totalpix}')
         for i in range(16):
             bitp = int(2**i)
             maux = np.ma.masked_where(aux & bitp, aux, copy=False)
@@ -1740,7 +1739,7 @@ class Image(object):
             bitfreq_0.append(nbits0)
             nbits1 = totalpix - nbits0
             bitfreq_1.append(nbits1)
-            print("Bit value :%5d @0: %7d  @1: %7d" % (bitp, nbits0, nbits1))
+            print(f'Bit value :{bitp:5d} @0: {nbits0:7d}  @1: {nbits1:7d}')
 
         xlocations = np.array((list(range(len(bitfreq_0)))))
         width = 0.7
