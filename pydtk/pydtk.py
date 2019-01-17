@@ -58,7 +58,67 @@ class ObjectNotAnString(Exception):
 
 class Image(object):
     '''
-    Need to write docstring for Image
+    Image class implements the Image object. This object has the following methods:
+
+    def __init__(self, filename=None, ext=0, slice=0, xps=0, xos=0, yps=0, yos=0, **kargs):
+    def findheaderkeyword(self, wildcard):
+    def findheadercomment(self, wildcard):
+    def transpose(self):
+    def rot(self, angle=90):
+    def fliplr(self):
+    def flipud(self):
+    def filenameinfo(self, **kargs):
+    def __getitem__(self, key):
+    def crop(self, xi, xf, yi, yf):
+    def copy(self):
+    def __add__(self, param):
+    def __sub__(self, param):
+    def __mul__(self, param):
+    def __truediv__(self, param):
+        # def __div__(self,param):
+    def medianfilt(self, kernel_size=3):
+    def mean(self, *coor, **kargs):
+    def median(self, *coor, **kargs):
+    def var(self, *coor, **kargs):
+    def std(self, *coor, **kargs):
+    def mask(self, NSTD=3.0, *coor, **kargs):
+    def save(self, filename):
+    def display(self, *window, **kargs):
+    def hist(self, *window, **kargs):
+    def rowstacking(self, *xcoor, **kargs):
+    def columnstacking(self, *ycoor, **kargs):
+    def get_xcoor(self, *coor):
+    def get_ycoor(self, *coor):
+    def get_windowcoor(self, *coor):
+    def stat(self, *coor, **kargs):
+    def extractspect(self, x0, y0, width, angle):
+    def avecol(self, *ycoor, **kargs):
+    def mediancol(self, *ycoor, **kargs):
+    def averow(self, *xcoor, **kargs):
+    def medianrow(self, *xcoor, **kargs):
+    def set_value(self, value=1000, *coor, **kargs):
+    def get_data(self):
+    def get_xi(self):
+    def get_xf(self):
+    def get_yi(self):
+    def get_yf(self):
+    def set_xps(self, xps):
+    def get_xps(self):
+    def set_xos(self, xos):
+    def get_xos(self):
+    def set_yps(self, yps):
+    def get_yps(self):
+    def set_yos(self, yos):
+    def get_yos(self):
+    def format(self):
+    def subwindows(self, nx=10, ny=10):
+    def fftcol(self, ReadOutSpeed=100, Vdelay=5, ColStart=None, ColEnd=None, **kargs):
+    def fftrow(self, ReadOutSpeed=100, RowStart=None, RowEnd=None, **kargs):
+    def fft2D(self, **kargs):
+    def bitcounts(self, *coor):
+    def addnormalnoise(self, stddev):
+    def addsinusoidalnoise(self, fnvector, ampvector, rofreq, vdelay, **kargs):
+
     '''
 
     def __init__(self, filename=None, ext=0, slice=0, xps=0, xos=0, yps=0, yos=0, **kargs):
@@ -113,6 +173,7 @@ class Image(object):
         if isinstance(filename, Image):  # if filename is an instance of Image... Copy attributes
             self.ext = filename.ext
             self.filename = filename.filename
+            self.path = filename.path
             self.header = filename.header
             self.data = filename.data
             self.slice = filename.slice
@@ -129,6 +190,7 @@ class Image(object):
         elif filename is None:  # if filename is None => create a syntetic image
             self.ext = 0
             self.filename = 'Simulated'
+            self.path = ''
             self.header = None
             self.slice = None
             self.xf = kargs.get('NROWS', 512)
@@ -289,7 +351,8 @@ class Image(object):
                 self.slice = slice
             """
 
-            self.filename = filename
+            self.filename = os.path.basename(filename)
+            self.path = os.path.dirname(filename)
             self.xi = 0
             self.yi = 0
             # self.shape = self.data.shape
@@ -334,6 +397,7 @@ class Image(object):
 
         """
         self.data = self.data.transpose()
+        # set the correct xf, yf and shape after transposing the data array
         self.xf = self.data.shape[0]
         self.yf = self.data.shape[1]
         self.shape = (self.xf, self.yf)
@@ -347,21 +411,19 @@ class Image(object):
         """
         if angle == 90:
             self.data = np.rot90(self.data, 1)
-            self.xf = self.data.shape[0]
-            self.yf = self.data.shape[1]
-            self.shape = (self.xf, self.yf)
+
         elif angle == 180:
             self.data = np.rot90(self.data, 2)
-            self.xf = self.data.shape[0]
-            self.yf = self.data.shape[1]
-            self.shape = (self.xf, self.yf)
+
         elif angle == 270:
             self.data = np.rot90(self.data, 3)
-            self.xf = self.data.shape[0]
-            self.yf = self.data.shape[1]
-            self.shape = (self.xf, self.yf)
+
         else:
             print("Angle must be 90, 180 or 270!")
+
+        self.xf = self.data.shape[0]
+        self.yf = self.data.shape[1]
+        self.shape = (self.xf, self.yf)
 
     def fliplr(self):
         """
@@ -381,24 +443,45 @@ class Image(object):
         """
         self.data = np.flipud(self.data)
 
-    def filenameinfo(self, **kargs):
+    def get_filename(self, **kargs):
         """
         Syntax:
-        im.filenameinfo()
+        im.get_filename()
+        name = im.get_filename(RETURN=True)
 
-        Print the filename used to generate the image
+        Print or return the filename of the image
         """
 
         if kargs.get('RETURN', False):
             return self.filename
         else:
-            if isinstance(self.ext, int):
-                print(f'File name: {self.filename}, ext={self.ext}')
-            elif isinstance(self.ext, str):
-                print(f'File name: {self.filename}, ext={self.ext}')
-                # print(("File name: %s, ext=%s") % (self.filename, self.ext))
-            print(f'xi: {self.xi}, xf: {self.xf}')
-            print(f'yi: {self.yi}, yf: {self.yf}')
+            print(f'File name: {self.filename}')
+
+    def get_path(self, **kargs):
+        """
+        Syntax:
+        im.get_path()
+        name = im.get_path(RETURN=True)
+
+        Print or return the path to directory of the image
+        """
+
+        if kargs.get('RETURN', False):
+            return self.path
+        else:
+            print(f'Path to file: {self.path}')
+
+    def get_extension(self, **kargs):
+        """
+        Syntax:
+        im.get_extension()
+        im.get_extension(RETURN=True)
+
+        """
+        if kargs.get('RETURN', False):
+            return self.ext
+        else:
+            print(f'extension={self.ext}')
 
     def __getitem__(self, key):
         """
@@ -438,7 +521,7 @@ class Image(object):
         Syntax:
         c=im.copy()
 
-        Generate a new image using a sub area of the original image
+        Generate a new image using  of the original image
 
         Example:
         c=b1.copy()
@@ -460,7 +543,7 @@ class Image(object):
         """
         Syntax:
         a = b+c
-        creates a new image a which is the addition pixel by pixel of images b and c
+        creates a new image 'a' which is the addition pixel by pixel of images b and c
 
         Redifine the '+' operation for 2 images or one image and one number
         """
@@ -597,8 +680,13 @@ class Image(object):
 
     def medianfilt(self, kernel_size=3):
         """
-        To be completed
+        Syntax:
+        im_filtered = im.medianfilt(kernel_size=5)
 
+        returns a new image which is the original but after applying
+        signal.medfilt2d method
+
+        TODO: check if it's wise to have this method that depends on scipy...
         """
 
         im = Image(self)  # create empty image container
@@ -638,7 +726,9 @@ class Image(object):
     def var(self, *coor, **kargs):
         """
         Syntax:
-        im.var(xi,xf,yi,yf)
+        im.var(xi,xf,yi,yf) compute variance of complete array
+        im.var(xi,xf,yi,yf, AXIS=0) compute variance of rows
+        im.var(xi,xf,yi,yf, AXIS=1) compute variance of columns
 
         Computes the variance for the image. If no coordinates are specified,
         the full image is used
@@ -651,10 +741,13 @@ class Image(object):
     def std(self, *coor, **kargs):
         """
         Syntax:
-        im.var(xi,xf,yi,yf)
+        im.std(xi,xf,yi,yf) compute std_dev of complete array
+        im.std(xi,xf,yi,yf, AXIS=0) compute std_dev of rows
+        im.std(xi,xf,yi,yf, AXIS=1) compute std_dev of columns
 
         Computes the standard deviation value for the image. If no coordenates
-        are specified, the full image is used
+        are specified, the full image is used.
+        If axis is 0 or 1, it will return a vector instead of a single number
         """
         axis = kargs.get('AXIS', None)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
@@ -664,14 +757,16 @@ class Image(object):
     def mask(self, NSTD=3.0, *coor, **kargs):
         """
         Syntax:
-        im.mask()
-        im.mask(NSTD=5.0)
-        im.mask(STD=2.0,100,400,500,800)
+        im.mask() generate mask of all pixels outside 3*std_dev from mean
+        im.mask(NSTD=5.0)generate masked array using mean (full image) and 5*std_dev
+        im.mask(NSTD=2.0,100,400,500,800) generate masked array of image using the mean
+        and 2*std_dev computed at [100:400,500:800]
 
         Converts the image data into masked array with all the values +/- FACTOR*std masked out
         """
+        # Computer mean value of image
         immean = self.mean(*coor)
-
+        # compute std_dev for image
         imstd = self.std(*coor)
         self.data = np.ma.masked_outside(self.data, immean-NSTD*imstd, immean+NSTD*imstd)
         if kargs.get('COUNTS', False):
@@ -1240,11 +1335,14 @@ class Image(object):
             # TODO Add datetime to saved file to make it unique
             if kargs.get('SAVE'):
                 dt = datetime.datetime.now()
-                dtstr = dt.strftime('_%Y_%m_%d:%H_%M_%S_')
+                dtstr = dt.strftime('_%Y%m%dT%H%M%S')
+                name = kargs.get('TITLE', self.filename.replace(' ', '_'))
+                '''
                 if kargs.get('TITLE'):
                     name = kargs.get('TITLE', self.filename)
                     name = name.replace(' ', '_')
-                plt.savefig('RowAvrg_' + name + dtstr + '.png')
+                '''
+                plt.savefig(f'RowAvrg_{name}{dtstr}.png')
 
             return None
         return np.mean(self[x1:x2, self.yi:self.yf], axis=0)
