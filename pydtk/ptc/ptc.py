@@ -54,6 +54,7 @@ def gain(imagelist, *coor, **kargs):
     # check if imagelist are images or filenames
     if all([isinstance(i, str) for i in imagelist]):
         images = [Image(i, ext) for i in imagelist]
+        print(f'Extension={ext}')
         b1 = images[0]
         b2 = images[1]
         ff1 = images[2]
@@ -78,8 +79,8 @@ def gain(imagelist, *coor, **kargs):
 
     dbiasff1 = ff1 - b1  # debiased FF1
     dbiasff2 = ff2 - b2  # debiased FF2
-    meanff2 = dbiasff2.mean()
-    meanff1 = dbiasff1.mean()
+    meanff2 = dbiasff2.mean()  # mean signal on FF2 debiased
+    meanff1 = dbiasff1.mean()  # mean signal on FF1 debiased
     ratio = meanff1/meanff2
     # print(ratio)
 
@@ -130,6 +131,164 @@ def gain(imagelist, *coor, **kargs):
     # RON =  RMS / sqrt(2)    #RON in ADUs
     RONe = RON * ConFac     # RON in electrons
 
+    # Error in CF estimation is the std/sqrt(number of windows)
+    CFstd = np.std(cf, axis=None)/np.sqrt(nwx*nwy)
+
+    # Check if run as ROUTINE, in that case return only the Conversion Factor and don't continue with plotting
+    if kargs.get('RETURN', False):
+        return x1, x2, y1, y2, ConFac, RONe, meanff2
+    else:
+        plt.figure()
+
+    print("*******************************************")
+    print(f"*CF  ={ConFac:.2f} +/-{CFstd:.2f} e/ADU")
+    print(f"*RON ={RONe:.3f} -e")
+    print(f"*RON ={RON:.3f} ADUs")
+    print("*******************************************")
+
+    # change shape of cf array to later compute the standard deviation and also make the histogram
+
+    cf.shape = (nwx*nwy, )
+    cfstd = np.std(cf, axis=None)
+    plt.clf()
+    plt.hist(cf, range=(ConFac - 3*cfstd, ConFac + 3*cfstd), bins=20)
+    plt.figtext(0.15, 0.8, ("CF mean=%5.3f +/-%5.3f e/ADU") %
+                (ConFac, CFstd), fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+    plt.figtext(0.15, 0.75, ("RON =%6.3f -e") %
+                (RONe), fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+    plt.figtext(0.15, 0.70, ("Computed @ %6.3f ADUs") % (np.mean(meansig)),
+                fontsize=11, bbox=dict(facecolor='yellow', alpha=0.5))
+
+    Title = kargs.get('TITLE', '')
+    plt.title(Title)
+    filetitle = Title.replace(' ', '_')
+    plt.show()
+
+    if kargs.get('SAVE', False):
+        plt.savefig('ConFac_'+filetitle+'.png')
+
+
+def gain2(imagelist, *coor, **kargs):
+    """
+    Variation of CCD gain computation
+    Compute the gain of the system using 2 Bias and 2 FF. The procedure devides the window
+    in NWX*NWY subwindows and computes the Gain for each one of them and then computes the mean
+    value and display an histogram. If the windows coordinates are not given, it will use the full
+    CCD.
+
+    Syntax:
+    gain(imagelist[,xi,xf,yi,yf][,NWX=10][,NWY=10][,VERBOSE=True/False][,SAVE=True][,TITLE='Graph Title'][,RETURN=True/False][, MEDIAN=True/False])
+
+    Note: the image list must contain 2 bias and 2 ff in that order!
+    imagelist can be a list of names o list of images
+    b1,b2= bias images
+    f1,f2= ff images
+    *coor=[xi,xf,yi,yf] = coordinates of the window to analize (should be a flat region)
+    kargs
+    -------
+    VERBOSE=True => print intermediate values
+    TITLE='Graph Title' => put a title in the graph
+    SAVE=True/False => if True, it saves the graph in pnp format
+    RETURN=True/False => if True, return only ConFAc without plots
+    MEDIAN=True/False => default True, computes median instead of mean
+    RATIO=True/FALSE => defaul True. just change the way the FPN is elliminated. Both
+    methods give almost the same rusults
+    NWX= number of windows in X direction (default 10)
+    NWY= number of windows in Y direction (default 10)
+    EXT=image extension to load, default 0
+
+
+    """
+    ext = kargs.get('EXT', 0)
+
+    if len(imagelist) != 4:
+        print('imagelist len different from 4')
+        exit
+
+    # check if imagelist are images or filenames
+    if all([isinstance(i, str) for i in imagelist]):
+        images = [Image(i, ext) for i in imagelist]
+        print(f'Extension={ext}')
+        b1 = images[0]
+        b2 = images[1]
+        ff1 = images[2]
+        ff2 = images[3]
+    else:
+        b1 = imagelist[0]
+        b2 = imagelist[1]
+        ff1 = imagelist[2]
+        ff2 = imagelist[3]
+
+    nwx = kargs.get('NWX', 10)  # set number of windows in x direction
+    nwy = kargs.get('NWY', 10)  # set number of windows in y direction
+
+    x1, x2, y1, y2 = b1.get_windowcoor(*coor)
+    # print(x1,x2,y1,y2)
+
+    # now work with cropped images, where the signal is more or less flat....
+    b1 = b1.crop(x1, x2, y1, y2)
+    b2 = b2.crop(x1, x2, y1, y2)
+    ff1 = ff1.crop(x1, x2, y1, y2)
+    ff2 = ff2.crop(x1, x2, y1, y2)
+
+    dbiasff1 = ff1 - b1  # debiased FF1
+    dbiasff2 = ff2 - b2  # debiased FF2
+    meanff2 = dbiasff2.mean()  # mean signal on FF2 debiased
+    meanff1 = dbiasff1.mean()  # mean signal on FF1 debiased
+    #ratio = meanff1/meanff2
+    # print(ratio)
+
+    if kargs.get('VERBOSE', False):
+        print(f'format images X={b1.shape[0]} pix Y={b1.shape[1]} pix')
+        print(f'Nx:{nwx} Ny:{nwy} X1:{x1} X2:{x2} Y1:{y1} Y2:{y2} WX:{(x2-x1)//nwx} WY:{(y2-y1)//nwy}')
+        print('')
+        print(f'meanff2 ={meanff2}')
+
+    #dbiasff2 = dbiasff2*ratio
+    #dbias_ff_diff = dbiasff1 - dbiasff2
+    #dbias_ff_sig = (dbiasff1 + dbiasff2)/2.0
+
+    # from Fabrice Chisthen
+    dbias_ff_sig = (dbiasff1/dbiasff2)*meanff2
+
+    # compute difference of 2 bias to get the RON
+    dbias = b1 - b2
+
+    # generate auxiliary arrays of nwx * nwy elements and initialize to zero
+    meansig = np.zeros((nwx, nwy))
+    stdff = np.zeros((nwx, nwy))
+    stdbias = np.zeros((nwx, nwy))
+    cf = np.zeros((nwx, nwy))
+    signal = (dbiasff1 / dbiasff2)
+    stdsig = np.zeros((nwx, nwy))
+
+    # windows is a generator of subwindows
+    windows = subwindowcoor(0, b1.shape[0], 0, b1.shape[1], **kargs)
+    for i, j, xi, xf, yi, yf in windows:
+        # compute mean value on each window for normalized ff
+        meansig[i, j] = np.mean(dbias_ff_sig[xi:xf, yi:yf])
+        # compute standard deviation on each window for normalized ff
+        stdsig[i, j] = np.std(dbias_ff_sig[xi:xf, yi:yf])/np.sqrt(2.0)
+        cf[i, j] = meansig[i, j] / (stdsig[i, j]**2)  # compute CF for each window
+        # compute standard deviation for each window of bias difference
+        stdbias[i, j] = np.std(dbias[xi:xf, yi:yf])/np.sqrt(2.0)
+
+        if kargs.get('VERBOSE', False):
+            print(
+                f"X({xi+x1},{xf+x1}) Y({yi+y1},{yf+y2}) Mean:{meansig[i, j]:.2f} stdff:{stdsig[i, j]:.2f}  CF:{cf[i, j]:.2f}")
+
+    if kargs.get('MEDIAN', True):
+        ConFac = np.median(cf, axis=None)
+        RON = np.median(stdbias, axis=None)
+
+    else:
+        ConFac = np.mean(cf, axis=None)
+        RON = np.mean(stdbias, axis=None)  # RON in ADUs
+
+    # RON =  RMS / sqrt(2)    #RON in ADUs
+    RONe = RON * ConFac     # RON in electrons
+
+    # Error in CF estimation is the std/sqrt(number of windows)
     CFstd = np.std(cf, axis=None)/np.sqrt(nwx*nwy)
 
     # Check if run as ROUTINE, in that case return only the Conversion Factor and don't continue with plotting

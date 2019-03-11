@@ -22,6 +22,7 @@ TODO: Use a list of files name to allow changng names, removing files
 from astropy.io import fits as pyfits
 import numpy as np
 import matplotlib.pyplot as plt
+# from matplotlib.colors import LogNorm
 from scipy import signal
 import os
 import datetime
@@ -67,7 +68,7 @@ class Image(object):
     def rot(self, angle=90):
     def fliplr(self):
     def flipud(self):
-    def filenameinfo(self, **kargs):
+    def filename(self, **kargs):
     def __getitem__(self, key):
     def crop(self, xi, xf, yi, yf):
     def copy(self):
@@ -187,7 +188,8 @@ class Image(object):
             self.yps = filename.yps
             self.yos = filename.yos
 
-        elif filename is None:  # if filename is None => create a syntetic image
+        # if filename is None => create a syntetic image
+        elif filename is None:
             self.ext = 0
             self.filename = 'Simulated'
             self.path = ''
@@ -209,6 +211,12 @@ class Image(object):
             ron = kargs.get('RON', 3)
             # check if BIAS (ADU) diferent from zero
             bias = kargs.get('BIAS', 1000)
+            # Amplitud [0..1] of half sinusoid in X direction
+            absorp_amp = kargs.get('ABSORP_AMP', 0)
+            # Xinit coordinate for the absorption
+            absorp_xinit = kargs.get('ABSORP_XINIT', 0)
+            # Xend coordinate for the absorption
+            absorp_xend = kargs.get('ABSORP_XEND', self.shape[0])
 
             # generate an array of NROWSxNCOLS and fill it with (flux/cf) +/- sqrt(flux/cf)
             # if DIT>0 and FLUX>0
@@ -226,6 +234,8 @@ class Image(object):
                 # in electrons
                 # shotnoise = shotnoise - signal_amplitud  # Leave only the shotnoise
                 shotnoise = np.random.normal(0, shotnoise_amplitud/cf, self.xf*self.yf)  # in ADUs
+                # To INT
+                # shotnoise.astype(int)
                 shotnoise = shotnoise.reshape((self.xf, self.yf))
 
                 self.data = self.data + shotnoise
@@ -303,10 +313,19 @@ class Image(object):
             # data = (np.random.standard_normal((self.xf,self.yf))*ron/cf) + bias
             data = np.random.normal(bias, ron/cf, self.xf*self.yf)  # in ADUs
             data = data.reshape((self.xf, self.yf))
+            # Add half sinusoidal absorption on bias in X direction (columns)
+            # this is to simulate problems with bias injection on Video Boards
+            absorp = np.ones(self.shape[0])
+            for i in range(absorp_xinit, absorp_xend):
+                absorp[i] = 1-(absorp_amp*np.sin(np.pi*(i-absorp_xinit) /
+                                                 (absorp_xend-absorp_xinit)))/100.0
+            data = data * absorp[:, np.newaxis]
             self.data = data + self.data
 
             # check if detector values are less or equal than 65535
             self.data = self.data.clip(min=0, max=65535)
+            # to INT
+            self.data = self.data.astype(int)
             self.xps = 0
             self.xos = 0
             self.yps = 0
@@ -371,6 +390,14 @@ class Image(object):
 
         Syntax:
         im.findheaderkeyword('DAT')
+
+        A header line has the format
+        ESO DET OUT1 CONAD : 2.2 /Conversion from ADUs to electrons
+        where ESO DET OUT1 CONAD is the keywords
+        2.2 is the value
+        /Conversion from ADUs to electrons  are the comments
+
+
         """
 
         for key in self.header.cards:
@@ -383,6 +410,12 @@ class Image(object):
 
         Syntax:
         im.findheadercomment('ADU')
+
+        A header line has the format
+        ESO DET OUT1 CONAD : 2.2 /Conversion from ADUs to electrons
+        where ESO DET OUT1 CONAD is the keywords
+        2.2 is the value
+        /Conversion from ADUs to electrons  are the comments
         """
 
         for key in self.header.cards:
@@ -700,7 +733,9 @@ class Image(object):
     def mean(self, *coor, **kargs):
         """
         Syntax:
-        im.mean(xi,xf,yi,yf)
+        im.mean(xi,xf,yi,yf) compute mean of complete array
+        im.mean(xi,xf,yi,yf, AXIS=0) compute mean of rows
+        im.mean(xi,xf,yi,yf, AXIS=1) compute mean of columns
 
         Computes the mean value for the image. If no coordinates are specified, the full image is used
         """
@@ -713,7 +748,9 @@ class Image(object):
     def median(self, *coor, **kargs):
         """
         Syntax:
-        im.median(xi,xf,yi,yf)
+        im.median(xi,xf,yi,yf) compute median of complete array
+        im.median(xi,xf,yi,yf, AXIS=0) compute median of rows
+        im.median(xi,xf,yi,yf, AXIS=1) compute median of columns
 
         Computes the median value for the image. If no coordinates are specified, the full image is used
         """
@@ -758,8 +795,8 @@ class Image(object):
         """
         Syntax:
         im.mask() generate mask of all pixels outside 3*std_dev from mean
-        im.mask(NSTD=5.0)generate masked array using mean (full image) and 5*std_dev
-        im.mask(NSTD=2.0,100,400,500,800) generate masked array of image using the mean
+        im.mask(NSTD=5.0) generates masked array using mean (full image) and 5*std_dev
+        im.mask(NSTD=2.0,100,400,500,800) generates masked array of image using the mean
         and 2*std_dev computed at [100:400,500:800]
 
         Converts the image data into masked array with all the values +/- FACTOR*std masked out
@@ -774,40 +811,50 @@ class Image(object):
             non_masked = self.data.count()
             print(f'Total pixels = {pixels}, masked pixels={pixels - non_masked}')
 
-    def save(self, filename):
+    def save(self, filename, path='.'):
         """
         Save image in FITS format, and copy the header from the
         original file fits
 
         im.save('filename.fits')
+        TODO: add path as parameter and use os.path.join, default '.'
         """
         hdu = pyfits.PrimaryHDU(self.data.astype(np.uint16), header=self.header)
         # hdu.header=self.header
-        hdu.writeto(filename)
+        print(f'Writing to {os.path.join(path,filename)}')
+        hdu.writeto(os.path.join(path, filename))
 
     def display(self, *window, **kargs):
         """
         Syntax:
         im.display(100, 600, 200, 800, vmin=190.0 ,vmax=201.5)
+        display image zone defined by [100:600, 200:800] and set Cut
+        at vmin=190 and vmax=201.5
 
-        Computes the mean value of the image, the standard deviation and then display the image with
+
+        im.display(nstd=3.0)
+        Computes the mean value of the whole image, the standard deviation and then display the image with
         a vmin=mean-3*std and vmax=mean+3*std if no option MIN and/or MAX is given
         The cut options are: vmin, vmax
         ex:b1.display(vmin=190.0,vmax=201.5)
            b1.display(100,400,200,600) display window[100:400,200:600]
+
+
+
 
         hsize = Horizontal size of canvas
         vsize = Vertical size of canvas
         vmin  = low cut
         vmax  = high cut
         cmap  = colormap  ('jet', 'hot' 'gray')
+        nstd = number of stddev over and below mean to set vmin and vmax
         colorbar: True/False
 
         """
-
+        nstd = kargs.get('nstd', 1.0)
         Xi, Xf, Yi, Yf = self.get_windowcoor(*window)
         meanval = self.data[Xi:Xf, Yi:Yf].mean()
-        stddev = self.data[Xi:Xf, Yi:Yf].std()
+        stddev = nstd*self.data[Xi:Xf, Yi:Yf].std()
 
         # print(meanval, stddev)  # DEBUG
 
@@ -823,9 +870,19 @@ class Image(object):
         # TODO Check min is greater than 0
         hsize = kargs.get('hsize', 8)
         vsize = kargs.get('vsize', 8)
-        vmin = kargs.get('vmin', lowercut)
-        vmax = kargs.get('vmax', uppercut)
-        cmap = kargs.get('cmap', plt.get_cmap('jet_r'))
+        vmin = kargs.get('vmin', lowercut)  # if vmin is not entered use computed lower cut
+        vmax = kargs.get('vmax', uppercut)  # if vmax is not entered use computed upper cut
+        cmap = kargs.get('cmap', plt.get_cmap('gray'))
+        # cnorm = kargs.get('norm', None)
+        # if cnorm == 'log':
+        #     vmin = self.data.min()
+        #     if vmin == 0.0:
+        #         vmin = 1
+        #     vmax = self.data.max()
+        #     print(f'Cut levels={vmin} and {vmax}')
+        #     norm = LogNorm(vmin=vmin, vmax=vmax)
+        #     print('Log')
+
         if cmap == 'jet':
             cmap = plt.get_cmap('jet_r')
         elif cmap == 'hot':
@@ -837,10 +894,15 @@ class Image(object):
         plt.figure(figsize=(vsize, hsize))
         plt.title(self.filename)
 
+        # if cnorm == 'log':
+        #     plt.imshow(self[Xi:Xf, Yi:Yf],
+        #                interpolation='nearest', cmap=cmap, origin='lower', norm=norm)
+        #     print('Log')
+        # else:
         plt.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax,
                    interpolation='nearest', cmap=cmap, origin='lower')
 
-        print(f'Cut levels={vmin} and {vmax}')
+        print(f'Cuts setting: vmin={vmin:.1f} vmax={vmax:.1f}')
 
         plt.xlabel('Ycoor')
         plt.ylabel('Xcoor')
@@ -888,7 +950,7 @@ class Image(object):
         Syntax:
         im.rowstacking(xi,xf,MIN=190,MAX=250)
 
-        Plot rows between coordinates yi and yf, with Y scale range going from
+        Plot rows between coordinates xi and xf, with signal scale range going from
         190 ADUs till 250 ADUs
 
         """
@@ -903,6 +965,7 @@ class Image(object):
         plt.xlabel('Column')
         plt.ylabel('Signal [ADUs]')
 
+        # if MIN and MAX are not entered, use data.min() and data.max()
         ymax = kargs.get('MAX', self.data.max())
         ymin = kargs.get('MIX', self.data.min())
         plt.ylim(ymin, ymax)
@@ -929,6 +992,7 @@ class Image(object):
         plt.xlabel('Row')
         plt.ylabel('Signal [ADUs]')
 
+        # if MIN and MAX are not entered, use data.min() and data.max()
         ymax = kargs.get('MAX', self.data.max())
         ymin = kargs.get('MIN', self.data.min())
         plt.ylim(ymin, ymax)
@@ -937,40 +1001,55 @@ class Image(object):
 
     def get_xcoor(self, *coor):
         """
-        To be completed
+        Compute the xcoordinates entered by user
         """
+        # if coor not entered use chip xi and xf
         if not coor:
             Xi = self.xi
             Xf = self.xf
-
+        # if only one value used, assume is Xi and set Xf as chip xf
         elif len(coor) == 1:
             Xi = coor[0]
             Xf = self.xf
+        # if both entered, use them..
         elif len(coor) == 2:
             Xi = coor[0]
             Xf = coor[1]
-
-        # TODO: check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
+        # check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
         #      than self.xf and self.yf
+        if Xi < self.xi or Xi > self.xf:
+            Xi = self.xi
+        if Xf < self.xi or Xf > self.xf:
+            Xf = self.xf
+        if Xi > Xf:
+            Xi = Xf
         return Xi, Xf
 
     def get_ycoor(self, *coor):
         """
-
+        Compute the xcoordinates entered by user
         """
+        # if coor not entered use chip xi and xf
         if not coor:
             Yi = self.yi
             Yf = self.yf
-
+        # if only one value used, assume is Yi and set Yf as chip yf
         elif len(coor) == 1:
             Yi = coor[0]
             Yf = self.yf
+        # if both entered, use them..
         elif len(coor) == 2:
             Yi = coor[0]
             Yf = coor[1]
 
         # TODO: check if Xf>Xi and Yf>Yi and also that the values are no negatives and no greater
         #      than self.xf and self.yf
+        if Yi < self.yi or Yi > self.yf:
+            Yi = self.yi
+        if Yf < self.yi or Yf > self.yf:
+            Yf = self.yf
+        if Yi > Yf:
+            Yi = Yf
         return Yi, Yf
 
     def get_windowcoor(self, *coor):
@@ -1026,7 +1105,7 @@ class Image(object):
     def stat(self, *coor, **kargs):
         """
         Syntax:
-        im.stat(xi,xf,yi,xf[,NWX=10][,NWY=10][,SHOW=True][,SAVE=True][,TITLE='GraphTitle'][,LOG=True][,NSTD=6][FACTOR=True])
+        im.stat(xi,xf,yi,xf[,NWX=10][,NWY=10][,PLOT=True][,SAVE=True][,TITLE='GraphTitle'][,LOG=True][,NSTD=6],[CF])
 
         Perform statistic analysis of window, if no coordinates are given, then perform
         statistic over whole image area. The following information is printed and plotted:
@@ -1038,27 +1117,28 @@ class Image(object):
         and a histogram of the pixel values is drawn
         options:
             NWX,NWY=number of windows in X and Y direction, set to 10 by default
+            PLOT=True Make a plot of the histogram
             FACTOR=True means that file is result of subtraction of two bias so RMS must be corrected by sqrt(2)
             CF=x.x conversion factor in e/ADU
             NSTD= Number of standard deviation used to discard values (default 6)
             LOG=True  if true => plot in log scale (Y)
             TITLE= used to put a title to the plot
             SAVE= save plot
-            BINS= number of bins to make histogram
+            #BINS= number of bins to make histogram
             RETURN= if True, return a tuple containing mean and median value od std
 
         """
         # if MASK=True use masked array for computation
-        local_copy = self.copy()
+        #local_copy = self.copy()
 
-        if kargs.get('MASK', True):
+        if kargs.get('MASK', False):
             local_copy.mask(**kargs)
 
         nx = kargs.get('NWX', 10)  # use 10 windows in X by default
         ny = kargs.get('NWY', 10)  # use 10 windows in Y by default
-        bins = kargs.get('BINS', 50)  # use 50 bins for histogram by default
+        # bins = kargs.get('BINS', 30)  # use 30 bins for histogram by default
 
-        Xi, Xf, Yi, Yf = local_copy.get_windowcoor(*coor)
+        Xi, Xf, Yi, Yf = self.get_windowcoor(*coor)
 
         # wx = (Xf - Xi)//nx  #NHA /
         # wy = (Yf - Yi)/ny   #NHA /
@@ -1072,10 +1152,10 @@ class Image(object):
         # for each sub window compute std, mean and median
         for i, j, xi, xf, yi, yf in windows:
             # This should work no matter the image orientation!
-            aux_std[i, j] = np.std(local_copy[xi:xf, yi:yf], axis=None)
-            aux_mean[i, j] = np.mean(local_copy[xi:xf, yi:yf], axis=None)
+            aux_std[i, j] = np.std(self[xi:xf, yi:yf], axis=None)
+            aux_mean[i, j] = np.mean(self[xi:xf, yi:yf], axis=None)
             # median doesn't work in masked arrays...
-            aux_median[i, j] = np.median(local_copy.get_data()[xi:xf, yi:yf], axis=None)
+            aux_median[i, j] = np.median(self.get_data()[xi:xf, yi:yf], axis=None)
             '''
             if kargs.get('MASK', True):
                 aux_median[i, j] = np.median(self.get_data()[xi:xf, yi:yf], axis=None)
@@ -1100,15 +1180,18 @@ class Image(object):
         # TODO print the correct window used for the computation
         print('')
         print(f'Window analysed: [{Xi}:{Xf},{Yi}:{Yf}] devided in {nx*ny} subwindows')
-        print(f'MaxVal={local_copy[Xi:Xf, Yi:Yf].max():.2f}  ADUs')
-        print(f'MinVal={local_copy[Xi:Xf, Yi:Yf].min():.2f}  ADUs')
+        print(f'MaxVal={self[Xi:Xf, Yi:Yf].max():.2f}  ADUs')
+        print(f'MinVal={self[Xi:Xf, Yi:Yf].min():.2f}  ADUs')
         print('')
         print(f'Mean  = {meanval:.2f} +/-{medstd:.3f} ADUs')
         print(f'Median= {medianval:.2f} +/-{medstd:.3f} ADUs')
+        if kargs.get('CF'):
+            cf = kargs.get('CF')
+            print(f'RMS = {medstd*cf:.1f} -e')
         print('')
         # change shape of mean array from 2D to 1D
         # TODO  window is not defined....
-        im = local_copy[Xi:Xf, Yi:Yf].copy()
+        im = self[Xi:Xf, Yi:Yf].copy()
         im.shape = (im.shape[0]*im.shape[1], )
 
         # number of standard deviations to define the mask
@@ -1119,13 +1202,16 @@ class Image(object):
         mask2 = im > (meanval - nstd*medstd)
         # mask = mask1*mask2
         plt.figure()
+        # Compute the number of bins to use
+        bins = int(meanval + nstd*medstd)-int(meanval - nstd*medstd)
+        print(f'bins={bins}')
         # TODO : Check why histogram is wrong with NSTD less than 6
         if kargs.get('LOG', False):
-            plt.hist(im, list(np.linspace((meanval - nstd*medstd),
-                                          (meanval + nstd*medstd), bins)), histtype='step', log='True')
+            plt.hist(im, list(np.linspace(int(meanval - nstd*medstd),
+                                          int(meanval + nstd*medstd), bins)), histtype='bar', log='True')
         else:
-            plt.hist(im, list(np.linspace((meanval - nstd*medstd),
-                                          (meanval + nstd*medstd), bins)), histtype='step')
+            plt.hist(im, list(np.linspace(int(meanval - nstd*medstd),
+                                          int(meanval + nstd*medstd), bins)), histtype='bar')
 
         plt.grid()
         plt.ylabel('Frequency')
@@ -1140,14 +1226,9 @@ class Image(object):
                     fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
         plt.figtext(0.15, 0.65, 'Window:[%d:%d,%d:%d]' % (
             Xi, Xf, Yi, Yf), fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
-        if kargs.get('CF'):
-            cf = kargs.get('CF')
-            if kargs.get('FACTOR'):
-                factor = np.sqrt(2.0)
-            else:
-                factor = 1.0
-            cf = cf/factor
 
+        # if option CF is entered, give results in electrons also
+        if kargs.get('CF'):
             plt.figtext(0.15, 0.7, 'RMS   = %7.3f -e  +/-%7.3f' % (medstd*cf, stdstd*cf),
                         fontsize=9, bbox=dict(facecolor='yellow', alpha=0.5))
         else:
@@ -1160,15 +1241,18 @@ class Image(object):
                 name = kargs.get('TITLE')
                 name = name.replace(' ', '_')
             plt.savefig('Statistic_'+name+'.png')
-        if kargs.get('SHOW', False):
+        if kargs.get('PLOT', True):
             plt.show()
 
     # TODO: Must be finished
+    # TBD: should it be here or better defined in utils...
     def extractspect(self, x0, y0, width, angle):
         """
         Extract a tilted spectra like UVES.
-        Point1 is the lower left side of the spectra (vertical oriented) or the lower left (horizontally oriented)
-        Point2 is the upper left side of the spectra (vertical oriented) or the lower right (horizontally oriented)
+        Point1 is the lower left side of the spectra (vertical oriented) or
+        the lower left (horizontally oriented)
+        Point2 is the upper left side of the spectra (vertical oriented) or
+        the lower right (horizontally oriented)
         width is the width of spectra
 
         """
@@ -1425,13 +1509,13 @@ class Image(object):
 
     def get_xi(self):
         """
-
+        Return smallest x coordinate in chip (normally 0)
         """
         return self.xi
 
     def get_xf(self):
         """
-
+        Return largest value of
         """
         return self.xf
 
@@ -1551,12 +1635,9 @@ class Image(object):
          and start the plot from bin 3
 
 
-
-
-
-
         DONE: copy self.data to other array and remove mean level, if DEBIAS=True
         """
+
         if kargs.get('DEBIAS', True):
             data = self.data
             data = data - data.mean()
@@ -1574,38 +1655,22 @@ class Image(object):
         # Time between 2 vertical pixels is equal to time from pix to pixel
         # multiplied by number of horizontal pixels plus the vertical delay for the parallel transfer
         Ts = Tp2p*(self.shape[1] + Vdelay)
-        print(f'File: {self.filenameinfo(RETURN=True)}')
-        if kargs.get('PLOT', True):
-            print(f'Time between vertical pixels: {Ts} s')
+
         # NPix is number of pixels in the column
         NPix = self.shape[0]
         ColS = ColStart
         ColE = ColEnd
 
-        if kargs.get('PLOT', True):
-            print(f'First and Last column to analyse: {ColS} {ColE}')
-
         DimFFT = 2**(nextpow2(NPix))  # find closer power of 2
         FirstPix = 0
         LastPix = DimFFT
         Fs = 1/Ts
-        if kargs.get('RETURN', True):
-            print(f'Number of original pixels: {NPix}')
-            print(f'Dimension FFT: {DimFFT} pix')
 
         # compute freq vector for ploting
         freq = (Fs/2) * np.linspace(0, 1, num=DimFFT//2)
 
-        if kargs.get('RETURN', True):
-            print(f'Largo freq={len(freq)}')
-            print('')
-            print(f'Each freq bin is equal to: {Fs/DimFFT} Hz')
-            print(f'Maximum freq : {Fs/2}')
-
         # prepare the hanning window
         hwindow = np.hanning(DimFFT)
-        if kargs.get('PLOT', True):
-            print(f'Largo hwindow={len(hwindow)}')
 
         Acum = np.zeros(DimFFT//2)
 
@@ -1621,7 +1686,17 @@ class Image(object):
 
         if kargs.get('RETURN', False):
             return freq, Acum
+
         if kargs.get('PLOT', True):
+            print(f'File: {self.get_filename(RETURN=True)}')
+            print(f'Number of original pixels: {NPix}')
+            print(f'Dimension FFT: {DimFFT} pix')
+            print(f'First and Last column to analyse: {ColS} {ColE}')
+            print(f'Largo freq={len(freq)}')
+            print(f'Each freq bin is equal to: {Fs/DimFFT} Hz')
+            print(f'Maximum freq : {Fs/2}')
+            print(f'Time between vertical pixels: {Ts} s')
+            print(f'Largo hwindow={len(hwindow)}')
             plt.figure()
             binstart = kargs.get('BSTART', 2)
             plt.grid()
@@ -1639,7 +1714,7 @@ class Image(object):
             plt.title('Low freq FFT analysis (Vertical transfer direction)')
             plt.title('Average FFT on columns '+kargs.get('TITLE', ''))
             if kargs.get('SAVE', False):
-                plt.savefig('fftcol_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
+                plt.savefig('fftcol_%s_CCDnr%d.png' % (self.get_filename(RETURN=True), self.ext))
             plt.show()
 
     def fftrow(self, ReadOutSpeed=100, RowStart=None, RowEnd=None, **kargs):
@@ -1693,7 +1768,7 @@ class Image(object):
         Ts = 1.0/ReadOutSpeed
         Ts = Ts/1000.0
 
-        print(f'File: {self.filenameinfo(RETURN=True)}')
+        print(f'File: {self.get_filename(RETURN=True)}')
 
         if kargs.get('PLOT', True):
             print(f'Time between horizontal pixels: {Ts}')
@@ -1762,7 +1837,7 @@ class Image(object):
             plt.grid(True)
             plt.title('Average FFT on rows '+kargs.get('TITLE', ''))
             if kargs.get('SAVE', False):
-                plt.savefig('fftrow_%s_CCDnr%d.png' % (self.filenameinfo(RETURN=True), self.ext))
+                plt.savefig('fftrow_%s_CCDnr%d.png' % (self.get_filename(RETURN=True), self.ext))
             plt.show()
 
     def fft2D(self, **kargs):
