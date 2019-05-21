@@ -17,7 +17,7 @@ from pydtk.utils.utils import meanstack
 
 def gain(imagelist, *coor, **kargs):
     """
-    Compute the gain of the system using 2 Bias and 2 FF. The procedure devides the window
+    Compute the gain of the system using 2 Bias and 2 FF. The procedure divides the window
     in NWX*NWY subwindows and computes the Gain for each one of them and then computes the mean
     value and display an histogram. If the windows coordinates are not given, it will use the full
     CCD.

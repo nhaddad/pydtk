@@ -9,9 +9,11 @@ from astropy.io import fits as pyfits
 import os
 import re
 import glob
+from pathlib import Path
 import numpy as np
 from pydtk import Image
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 
@@ -129,11 +131,12 @@ def infofits(filename, **kargs):
     return None
 
 
-def getheader(filename, ext=0, FILTER=None, ONCOMMENTS=True, **kargs):
+def getheader(filename, ext=0, FILTER=None, **kargs):
     """
     Read the header for a FITS file, if a FILTER string is specified,
     the output will contain only lines that have FILTER in the keyword
     if ONCOMMENTS=True, then also look into comments
+
 
     Example:
     getheader('FORS2_IMG_CAL099.80.CHIP1.fits','CHIP1') or
@@ -155,6 +158,8 @@ def getheader(filename, ext=0, FILTER=None, ONCOMMENTS=True, **kargs):
 
     try:
         header = pyfits.getheader(filename,ext)
+        keys = [i for i in list(header.keys()) if i!='']
+        dict_out = { i:[header.get(i), header.comments[i]] for i in keys}
 
 
     except:
@@ -163,12 +168,10 @@ def getheader(filename, ext=0, FILTER=None, ONCOMMENTS=True, **kargs):
 
     #if FILTER is None, print all the non empty keywords
     if FILTER is None:
-        keys = [i for i in list(header.keys()) if i!='']
-        subkeys = [k for k in keys]
-        values = [header.get(key) for key in subkeys]
-        comments = [header.comments[key] for key in subkeys]
-        return list(zip(subkeys, values, comments))
-
+        if kargs.get('RETURN',True):
+            return pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments'])#.transpose()
+        else:
+            print(pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments']))#.transpose())
 
     #TODO: check for FILTER also in values and comments
     elif isinstance(FILTER,str):
@@ -177,28 +180,30 @@ def getheader(filename, ext=0, FILTER=None, ONCOMMENTS=True, **kargs):
         keys = [i for i in list(header.keys()) if i!='']
 
         #from keys, generate a subset of keys called 'subkeys' which contains the keys that have FILTER or the comments that have FILTER
-        if ONCOMMENTS :
+        if kargs.get('ONCOMMENTS',True) :
             subkeys = [k for k in keys if (FILTER in k) or (FILTER in header.comments[k].upper())]
         else:
             subkeys = [k for k in keys if (FILTER in k)]
 
-        values = [header.get(key) for key in subkeys]
-        comments = [header.comments[key] for key in subkeys]
-        headerlist = list(zip(subkeys, values, comments))
+        #values = [header.get(key) for key in subkeys]
+        #comments = [header.comments[key] for key in subkeys]
+        #headerlist = list(zip(subkeys, values, comments))
         #headerlist = [line for line in headerlist if line.cards!=('','','')]
+        dict_out = { i:(header.get(i), header.comments[i]) for i in subkeys}
 
-        if kargs.get('RETURN',False): #if RETURN==False print to console
-            print(headerlist)
+        if kargs.get('RETURN',True): #if RETURN==False print to console
+            return pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments'])#.transpose()
+
 
         else:                         #if RETURN==True
-            return headerlist
+            print(pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments']))#.transpose())
     #else:
         #return None
     return None
 
 
 
-def dfitsort(filefilter='*fits', FILTERLIST=None, **kargs ):
+def dfitsort(filefilter='*fits', FILTERLIST=None,  **kargs ):
     """
     Print a list with filename, Filters and values with the same format
     If you need to store the list, use RETURN=True
@@ -209,6 +214,9 @@ def dfitsort(filefilter='*fits', FILTERLIST=None, **kargs ):
         '^xxx' means begin with xxx
         'xxx$' means finish with xxx
 
+    kargs:
+    RETURN=[False]
+    DF=[FALSE]  return a Pandas dataframe if true
 
     Examples:
     dfitsort(FILTERLIST=['^EXPTIME$'])
@@ -235,6 +243,8 @@ def dfitsort(filefilter='*fits', FILTERLIST=None, **kargs ):
     """
 
     #TODO make a list of all filenames that fits 'filefilter'
+
+
     filelist = glob.glob(filefilter)
     longestname = len(max(filelist, key=len))
 
@@ -242,61 +252,60 @@ def dfitsort(filefilter='*fits', FILTERLIST=None, **kargs ):
     #TODO make an empty list to contain the outout
     output = []
 
-    ext = kargs.get('EXT',0)
+    ext = kargs.get('ext',0)
 
+    output_dic = {}
     for filename in filelist:
         #Read header of file
         try:
             #print filename
             header = pyfits.getheader(filename,ext)
+            keys = list(header.keys())
+            keys = [k for k in keys if k!=''] #elliminate empty keys
         except:
             print("Error opening the filename or wrog extension")
             return None
 
         #Check each filter against header
-        values = []
+        #values = []
 
-
-        keys = list(header.keys())
-        keys = [k for k in keys if k!=''] #elliminate empty keys
-        #if FILTERLIST is just a string
-        if isinstance(FILTERLIST, str):
-            rexp = re.compile(FILTERLIST, re.IGNORECASE)
-            subkeys = [k for k in keys if rexp.match(k)!=None]
-            #Now check which keys coincide
-            #TODO completar
-        #else if FILTERLIST is a list of strings
-        elif isinstance(FILTERLIST,list):
+        # Check if FILTERLIST is not empty
+        if isinstance(FILTERLIST, list):
             subkeys = []
             for filt in FILTERLIST:
                 rexp = re.compile(filt, re.IGNORECASE)
-                #subkeys = [k for k in keys if rexp.match(k)!=None]
+                    #subkeys = [k for k in keys if rexp.match(k)!=None]
                 for k in keys:
                     if rexp.match(k)!=None:
                         subkeys.append(k)
 
-        if subkeys:  #check if subkey is not empty len(subkeys)>0:
-            #print('Subkeys = {}'.format(subkeys))
-            values = [str(header.get(i)) for i in subkeys]
-            values.insert(0, filename)
-            #print('Value {}'.format(values))
-            output.append('%s '*len(values) % tuple(values))
-        '''
-        for i in subkeys:
-            values.append(str(header.get(i)))
+
+        else:
+            print('No FILTERLIST provided!')
+
+        # check if subkey is not empty len(subkeys)>0:
+        if subkeys:
+            # Get all the keyword values as a dict
+            values = {i:str(header.get(i)) for i in subkeys}
+            # create an output dictionary with filename as key and all values as another dict
+            output_dic.update({filename:values})
 
 
-        values.insert(0,filename)
-        output.append('%s '*len(values) % tuple(values))
-        '''
-
-    if kargs.get('RETURN',False):
-        output =[i.split() for i in output]
-        return output
+    if kargs.get('RETURN',True):
+        if kargs.get('DF',True):
+            return pd.DataFrame.from_dict(output_dic, orient='index')#.transpose()
+        else:
+            return output_dic
 
     else:
-        for i in output:
-            print(('%-'+str(longestname+4)+'s '+'%s  '*(len(i.split())-1)) % tuple(i.split()))
+        #TODO improve output format
+        for key,value in output_dic.items():
+            listval = [val for i,val in value.items()]
+            listval.insert(0,key)
+            listval_str = ' '.join(listval)
+            print(listval_str)
+
+
 
     return None
 
@@ -833,7 +842,3 @@ def extractchannel(filelist, channel):
 
     else:
         print("Not valid name or file name list")
-
-
-
-
