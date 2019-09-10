@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 # from matplotlib.colors import LogNorm
 from scipy import signal
 import os
+import re
 import datetime
 from .utils.utilsfunc import nextpow2
 from .utils.utilsfunc import subwindowcoor
@@ -384,7 +385,7 @@ class Image(object):
             if kargs.get('NAME', False):
                 print(f'Loading {filename}...')
 
-    def findheaderkeyword(self, wildcard):
+    def findheaderkeyword(self, wildcard=None):
         """
         Print out all the headers that have the wild card
 
@@ -399,12 +400,19 @@ class Image(object):
 
 
         """
+        if wildcard==None:
+            print("Need to provide wildcard string, ex: 'TIME'")
+            return None
 
+        wildcard = '.*'+wildcard+'.*'
+        rexp = re.compile(wildcard, re.IGNORECASE)
         for key in self.header.cards:
-            if key[0].find(wildcard) != -1:
+            if rexp.match(key[0])!=None:
+                #subkeys.append(k)
+            #if key[0].find(wildcard) != -1:
                 print(f'{key[0]} : {key[1]} /{key[2]}')
 
-    def findheadercomment(self, wildcard):
+    def findheadercomment(self, wildcard=None):
         """
         Print out all the headers that have the wild card in the comment
 
@@ -418,8 +426,16 @@ class Image(object):
         /Conversion from ADUs to electrons  are the comments
         """
 
+        if wildcard==None:
+            print("Need to provide wildcard string, ex: 'TIME'")
+            return None
+
+        wildcard = '.*'+wildcard+'.*'
+        rexp = re.compile(wildcard, re.IGNORECASE)
+
         for key in self.header.cards:
-            if key[2].find(wildcard) != -1:
+            if rexp.match(key[2])!=None:
+            #if key[2].find(wildcard) != -1:
                 print(f'{key[0]} : {key[1]} /{key[2]}')
 
     def transpose(self):
@@ -587,7 +603,7 @@ class Image(object):
             im = Image(self)
             im.filename = self.filename+'+'+param.filename
         # if self is Image and param is a number or an ndarray
-        elif isinstance(self, Image) and isinstance(param, (int, float, np.float32, np.dnarray)):
+        elif isinstance(self, Image) and isinstance(param, (int, float, np.float32, np.ndarray)):
             a = self.data
             b = param
             im = Image(self)  # create empty image container

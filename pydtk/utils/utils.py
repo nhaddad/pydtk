@@ -18,6 +18,7 @@ import pandas as pd
 
 
 
+
 def generate_fpn_pixel(**kargs):
     """
     Generates a matrix with random coeficients that introduces a fix pattern noise
@@ -83,14 +84,18 @@ def generate_fpn_col(**kargs):
 
 
 
-def infofits(filename, **kargs):
-    """
-    Read and display the extension information for image "filename.fits"
 
+def infofits(filefilter='*fits', filepath='.', **kargs):
+    '''
     Syntax:
     infofits('filename.fits')
-
-
+    This function returns:
+    pandas data frame or dictionary if filefilter selects more than 1 files
+    If filefilter selects more than one file, it will return by default a
+    pandas dataframe with the information of all the files.
+    If you prefer a dictionary, then set kargs PANDAS=False.
+    The default file path is the current directory ('.'), but this
+    can be modified.
 
     Example:
     infofits('FORS2_IMG_CAL099.80.CHIP1.fits') which gives, for this file
@@ -114,21 +119,55 @@ def infofits(filename, **kargs):
     6    ESO_CCD_#74  ImageHDU        52   (2144, 4200)   int16 (rescales to uint16)
     ....etc (32 CCDs)
 
+    The above two cases we were interrogating for a specific file, if we like to check
+    for many files we must assign to a pandas dataframe or dictionary:
 
-    """
-
-    try:
-        if kargs.get('RETURN',False):
-            return pyfits.info(filename, output=False)
-        else:
-            pyfits.info(filename)
+    df = infofits('*BLUE*fits')  to get a Pandas dataframe for all fits files that
+    have BLUE in the name.
 
 
-    except:
-        print("Error opening the filename")
+    If you rather have a dictionary, use:
+
+    dict = infofits('*BLUE*fits', PANDAS=False)
+
+    '''
+    path = Path(filepath)
+    filelist = list(path.glob(filefilter))
+    #filelist = glob.glob(filefilter)
+    if len(filelist)==0:
+        print('No files found..')
         return None
 
-    return None
+    elif len(filelist)==1:
+        pyfits.info(filelist[0])
+        return None
+
+    output_dic = {}
+    for filename in filelist:
+        try:
+            #print filename
+
+            dic_aux = {}
+            info = pyfits.info(filename, output=False)
+            for tup in info:
+                dic_aux.update({tup[0]:[
+                                tup[1],
+                                tup[3],
+                                tup[4],
+                                tup[5]]})
+
+
+
+        except:
+            print(f"Error opening {filename} or wrong extension")
+            pass
+
+        output_dic.update({filename:dic_aux})
+    if kargs.get('PANDAS',True):
+        return pd.DataFrame.from_dict(output_dic, orient='index')
+    else:
+        return output_dic
+
 
 
 def getheader(filename, ext=0, FILTER=None, **kargs):
@@ -203,7 +242,7 @@ def getheader(filename, ext=0, FILTER=None, **kargs):
 
 
 
-def dfitsort(filefilter='*fits', FILTERLIST=None,  **kargs ):
+def dfitsort(filefilter='*fits', filepath='.', FILTERLIST=None,  **kargs ):
     """
     Print a list with filename, Filters and values with the same format
     If you need to store the list, use RETURN=True
@@ -227,7 +266,7 @@ def dfitsort(filefilter='*fits', FILTERLIST=None,  **kargs ):
     save list in mylist instead of printing out
 
     dfitsort(FILTERLIST=['.*EXPTIME$'])
-    List tkeywords that start with any character but ends with EXPTIME
+    List keywords that start with any character but ends with EXPTIME
     this wil match 'EXPTIME' and 'ESO INS LAMP1 EXPTIME'
 
     dfitsort(FILTERLIST=['.*EXPTIME$','.*READ.*'])
@@ -244,13 +283,11 @@ def dfitsort(filefilter='*fits', FILTERLIST=None,  **kargs ):
 
     #TODO make a list of all filenames that fits 'filefilter'
 
+    path = Path(filepath)
+    filelist = list(path.glob(filefilter))
+    #filelist = glob.glob(filefilter)
+    longestname = len(max([i.name for i in filelist], key=len))
 
-    filelist = glob.glob(filefilter)
-    longestname = len(max(filelist, key=len))
-
-
-    #TODO make an empty list to contain the outout
-    output = []
 
     ext = kargs.get('ext',0)
 
@@ -282,6 +319,7 @@ def dfitsort(filefilter='*fits', FILTERLIST=None,  **kargs ):
 
         else:
             print('No FILTERLIST provided!')
+            return None
 
         # check if subkey is not empty len(subkeys)>0:
         if subkeys:
@@ -290,9 +328,11 @@ def dfitsort(filefilter='*fits', FILTERLIST=None,  **kargs ):
             # create an output dictionary with filename as key and all values as another dict
             output_dic.update({filename:values})
 
-
+    # if RETURN=True, return a Pandas dataframe or a dictionary if
+    # PANDAS=False
+        pass
     if kargs.get('RETURN',True):
-        if kargs.get('DF',True):
+        if kargs.get('PANDAS',True):
             return pd.DataFrame.from_dict(output_dic, orient='index')#.transpose()
         else:
             return output_dic

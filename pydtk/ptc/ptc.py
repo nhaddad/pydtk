@@ -15,6 +15,31 @@ from pydtk.utils.utils import medianstack
 from pydtk.utils.utils import meanstack
 
 
+def ImageIter(imagelist, **kargs):
+    """
+    This is an iterator:
+    giving a list containing the image names, it will
+    return images one by one.
+    Useful to process all the images, one at a time without
+    needing to load them all in memory at the same time.
+
+    EX:
+    ilist = ['image1.fits', 'image2.fits', ... 'imageN.fits']
+
+    images = ImageIter(ilist)
+
+    for image in images:
+        some processing
+
+
+    """
+    ext = kargs.get('ext', 0)
+    #Make sure image list are strings
+    if all([isinstance(i, str) for i in imagelist]):
+        for i in imagelist:
+            yield Image(i,ext)
+
+
 def gain(imagelist, *coor, **kargs):
     """
     Compute the gain of the system using 2 Bias and 2 FF. The procedure divides the window
@@ -45,13 +70,13 @@ def gain(imagelist, *coor, **kargs):
 
 
     """
-    ext = kargs.get('EXT', 0)
+    ext = kargs.get('ext', 0)
 
     if len(imagelist) != 4:
         print('imagelist len different from 4')
-        exit
+        return None
 
-    # check if imagelist are images or filenames
+    #  if imagelist contains only image names, load them
     if all([isinstance(i, str) for i in imagelist]):
         images = [Image(i, ext) for i in imagelist]
         print(f'Extension={ext}')
@@ -59,11 +84,27 @@ def gain(imagelist, *coor, **kargs):
         b2 = images[1]
         ff1 = images[2]
         ff2 = images[3]
-    else:
+    # elif all are images, just assign them
+    elif all([isinstance(i,Image) for i in imagelist]):
         b1 = imagelist[0]
         b2 = imagelist[1]
         ff1 = imagelist[2]
         ff2 = imagelist[3]
+    else:
+        print("Not all objects in image list are Images or filenames")
+        return None
+
+    #Check if bias have EXPTIME = 0.0 and FF EXPTIME > 0
+    testlist = []
+    testlist.append(b1.header['EXPTIME']==0.0)
+    testlist.append(b2.header['EXPTIME']==0.0)
+    testlist.append(ff1.header['EXPTIME']>0.0)
+    testlist.append(ff2.header['EXPTIME']>0.0)
+
+    if not all(testlist):
+        print('Exposure times for at least one file are not correct')
+        return None
+
 
     nwx = kargs.get('NWX', 10)  # set number of windows in x direction
     nwy = kargs.get('NWY', 10)  # set number of windows in y direction
@@ -199,13 +240,13 @@ def gain2(imagelist, *coor, **kargs):
 
 
     """
-    ext = kargs.get('EXT', 0)
+    ext = kargs.get('ext', 0)
 
     if len(imagelist) != 4:
         print('imagelist len different from 4')
-        exit
+        return None
 
-    # check if imagelist are images or filenames
+    #  if imagelist contains only image names, load them
     if all([isinstance(i, str) for i in imagelist]):
         images = [Image(i, ext) for i in imagelist]
         print(f'Extension={ext}')
@@ -213,11 +254,29 @@ def gain2(imagelist, *coor, **kargs):
         b2 = images[1]
         ff1 = images[2]
         ff2 = images[3]
-    else:
+    # elif all are images, just assign them
+    elif all([isinstance(i,Image) for i in imagelist]):
         b1 = imagelist[0]
         b2 = imagelist[1]
         ff1 = imagelist[2]
         ff2 = imagelist[3]
+    else:
+        print("Not all objects in image list are Images or filenames")
+        return None
+
+
+    #Check if bias have EXPTIME = 0.0 and FF EXPTIME > 0
+    testlist = []
+    testlist.append(b1.header['EXPTIME']==0.0)
+    testlist.append(b2.header['EXPTIME']==0.0)
+    testlist.append(ff1.header['EXPTIME']>0.0)
+    testlist.append(ff2.header['EXPTIME']>0.0)
+    print(testlist)
+
+    if not all(testlist):
+        print('Exposure times for at least one file are not correct')
+        return None
+
 
     nwx = kargs.get('NWX', 10)  # set number of windows in x direction
     nwy = kargs.get('NWY', 10)  # set number of windows in y direction
@@ -363,7 +422,7 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
 
     MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
     VERBOSE = kargs.get('VERBOSE', False)
-    ext = kargs.get('EXT', 0)
+    ext = kargs.get('ext', 0)
 
     # read coordinates of first image
     x1, x2, y1, y2 = Image(imagelist[0], ext).get_windowcoor(*coor)
