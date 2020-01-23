@@ -22,6 +22,7 @@ TODO: Use a list of files name to allow changng names, removing files
 from astropy.io import fits as pyfits
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 # from matplotlib.colors import LogNorm
 from scipy import signal
 import os
@@ -29,6 +30,7 @@ import re
 import datetime
 from .utils.utilsfunc import nextpow2
 from .utils.utilsfunc import subwindowcoor
+from pathlib import Path
 # from .utils.utils import genspectralimits
 
 
@@ -884,8 +886,8 @@ class Image(object):
         else:
             uppercut = 65535
         # TODO Check min is greater than 0
-        hsize = kargs.get('hsize', 8)
-        vsize = kargs.get('vsize', 8)
+        hsize = kargs.get('hsize', 12)
+        vsize = kargs.get('vsize', 12)
         vmin = kargs.get('vmin', lowercut)  # if vmin is not entered use computed lower cut
         vmax = kargs.get('vmax', uppercut)  # if vmax is not entered use computed upper cut
         cmap = kargs.get('cmap', plt.get_cmap('gray'))
@@ -908,6 +910,8 @@ class Image(object):
 
         # clf()
         plt.figure(figsize=(vsize, hsize))
+        ax=plt.gca()
+        ##plt.title(self.filename)
         plt.title(self.filename)
 
         # if cnorm == 'log':
@@ -915,15 +919,20 @@ class Image(object):
         #                interpolation='nearest', cmap=cmap, origin='lower', norm=norm)
         #     print('Log')
         # else:
-        plt.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax,
+        #plt.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax,
+        #           interpolation='nearest', cmap=cmap, origin='lower')
+        im=ax.imshow(self[Xi:Xf, Yi:Yf], vmin=vmin, vmax=vmax,
                    interpolation='nearest', cmap=cmap, origin='lower')
 
         print(f'Cuts setting: vmin={vmin:.1f} vmax={vmax:.1f}')
 
         plt.xlabel('Ycoor')
         plt.ylabel('Xcoor')
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+
         if kargs.get('colorbar', True):
-            plt.colorbar()  # plt.colorbar()
+            plt.colorbar(im,cax)  # plt.colorbar()
 
         plt.show()  # plt.show()
 

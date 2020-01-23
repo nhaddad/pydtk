@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from pydtk.utils.utilsfunc import subwindowcoor
 from pydtk.utils.utils import medianstack
 from pydtk.utils.utils import meanstack
+from pathlib import Path
 
 
 def ImageIter(imagelist, **kargs):
@@ -33,9 +34,16 @@ def ImageIter(imagelist, **kargs):
 
 
     """
+
+    #default extension is 0
     ext = kargs.get('ext', 0)
+
     #Make sure image list are strings
     if all([isinstance(i, str) for i in imagelist]):
+        for i in imagelist:
+            yield Image(i,ext)
+    #Or Make sure image list are Path
+    elif all([isinstance(i, Path) for i in imagelist]):
         for i in imagelist:
             yield Image(i,ext)
 
@@ -51,7 +59,7 @@ def gain(imagelist, *coor, **kargs):
     gain(imagelist[,xi,xf,yi,yf][,NWX=10][,NWY=10][,VERBOSE=True/False][,SAVE=True][,TITLE='Graph Title'][,RETURN=True/False][, MEDIAN=True/False])
 
     Note: the image list must contain 2 bias and 2 ff in that order!
-    imagelist can be a list of names o list of images
+    imagelist can be a list of names, a list of Paths or list of images
     b1,b2= bias images
     f1,f2= ff images
     *coor=[xi,xf,yi,yf] = coordinates of the window to analize (should be a flat region)
@@ -80,6 +88,13 @@ def gain(imagelist, *coor, **kargs):
     if all([isinstance(i, str) for i in imagelist]):
         images = [Image(i, ext) for i in imagelist]
         print(f'Extension={ext}')
+        b1 = images[0]
+        b2 = images[1]
+        ff1 = images[2]
+        ff2 = images[3]
+    # elif all are images, just assign them
+    elif all([isinstance(i,Path) for i in imagelist]):
+        images = [Image(i, ext) for i in imagelist]
         b1 = images[0]
         b2 = images[1]
         ff1 = images[2]
@@ -221,7 +236,7 @@ def gain2(imagelist, *coor, **kargs):
     gain(imagelist[,xi,xf,yi,yf][,NWX=10][,NWY=10][,VERBOSE=True/False][,SAVE=True][,TITLE='Graph Title'][,RETURN=True/False][, MEDIAN=True/False])
 
     Note: the image list must contain 2 bias and 2 ff in that order!
-    imagelist can be a list of names o list of images
+    imagelist can be a list of names, a list of Path or list of images
     b1,b2= bias images
     f1,f2= ff images
     *coor=[xi,xf,yi,yf] = coordinates of the window to analize (should be a flat region)
@@ -248,6 +263,13 @@ def gain2(imagelist, *coor, **kargs):
 
     #  if imagelist contains only image names, load them
     if all([isinstance(i, str) for i in imagelist]):
+        images = [Image(i, ext) for i in imagelist]
+        print(f'Extension={ext}')
+        b1 = images[0]
+        b2 = images[1]
+        ff1 = images[2]
+        ff2 = images[3]
+    elif all([isinstance(i, Path) for i in imagelist]):
         images = [Image(i, ext) for i in imagelist]
         print(f'Extension={ext}')
         b1 = images[0]
