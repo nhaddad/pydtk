@@ -85,17 +85,15 @@ def generate_fpn_col(**kargs):
 
 
 
-def infofits(filefilter='*fits', filepath='.', **kargs):
+def infofits(filepath, **kargs):
     '''
     Syntax:
     infofits('filename.fits')
-    This function returns:
-    pandas data frame or dictionary if filefilter selects more than 1 files
-    If filefilter selects more than one file, it will return by default a
-    pandas dataframe with the information of all the files.
-    If you prefer a dictionary, then set kargs PANDAS=False.
-    The default file path is the current directory ('.'), but this
-    can be modified.
+        infofits('filename.fits', RETURN=True)
+
+    This function returns information of extensions in a FITS file
+    fits.info
+
 
     Example:
     infofits('FORS2_IMG_CAL099.80.CHIP1.fits') which gives, for this file
@@ -119,55 +117,51 @@ def infofits(filefilter='*fits', filepath='.', **kargs):
     6    ESO_CCD_#74  ImageHDU        52   (2144, 4200)   int16 (rescales to uint16)
     ....etc (32 CCDs)
 
-    The above two cases we were interrogating for a specific file, if we like to check
-    for many files we must assign to a pandas dataframe or dictionary:
-
-    df = infofits('*BLUE*fits')  to get a Pandas dataframe for all fits files that
-    have BLUE in the name.
-
-
-    If you rather have a dictionary, use:
-
-    dict = infofits('*BLUE*fits', PANDAS=False)
 
     '''
-    path = Path(filepath)
-    filelist = list(path.glob(filefilter))
-    #filelist = glob.glob(filefilter)
-    if len(filelist)==0:
-        print('No files found..')
-        return None
+    if Path(filepath).is_file():
+        if kargs.get('RETURN',False):
+            return pyfits.info(filepath, output=False)
+        else:
+            pyfits.info(filepath)
 
-    elif len(filelist)==1:
-        pyfits.info(filelist[0])
-        return None
-
-    output_dic = {}
-    for filename in filelist:
-        try:
-            #print filename
-
-            dic_aux = {}
-            info = pyfits.info(filename, output=False)
-            for tup in info:
-                dic_aux.update({tup[0]:[
-                                tup[1],
-                                tup[3],
-                                tup[4],
-                                tup[5]]})
-
-
-
-        except:
-            print(f"Error opening {filename} or wrong extension")
-            pass
-
-        output_dic.update({filename:dic_aux})
-    if kargs.get('PANDAS',True):
-        return pd.DataFrame.from_dict(output_dic, orient='index')
     else:
-        return output_dic
+        print(f'File "{filepath}" not exist')
 
+def get_ext_list(filename, substr):
+    '''
+    Use fits.info to get a list of all the extensions in the image file
+    ext_list = get_ext_list(filename, substr)
+    ext_list = get_ext_list('MUSE_001.fits', 'CHAN')
+
+    '''
+    if Path(filename).is_file():
+        info = pyfits.info(filename, output=False)
+        ext_list = [i[1] for i in info if (substr in i[1])]
+        return ext_list
+    else:
+        print(f'File "{filename}" not exist')
+
+
+
+
+def get_datacube(filename, ext_list):
+    '''
+    For images containing multiple extension (VIRCAM, OMEGACAM, etc), this utility function
+    generate a data cube of numpy arrays
+    ext_list is a list of valid extensions to read like:
+        [1,2,3]
+        ['CHAN01', 'CHAN02', 'CHAN24']
+
+    '''
+    if Path(filename).is_file():
+        data =[]
+        hdu = pyfits.open(filename)
+        for ext in ext_list:
+            data.append(hdu[ext].data.astype(float))
+        return np.array(data)
+    else:
+        print(f'File "{filename}" not exis')
 
 
 def getheader(filename, ext=0, FILTER=None, **kargs):
@@ -207,10 +201,11 @@ def getheader(filename, ext=0, FILTER=None, **kargs):
 
     #if FILTER is None, print all the non empty keywords
     if FILTER is None:
-        if kargs.get('RETURN',True):
-            return pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments'])#.transpose()
+        if kargs.get('RETURN',False):
+            print(pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments']))
+
         else:
-            print(pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments']))#.transpose())
+            return pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments'])
 
     #TODO: check for FILTER also in values and comments
     elif isinstance(FILTER,str):
@@ -230,12 +225,12 @@ def getheader(filename, ext=0, FILTER=None, **kargs):
         #headerlist = [line for line in headerlist if line.cards!=('','','')]
         dict_out = { i:(header.get(i), header.comments[i]) for i in subkeys}
 
-        if kargs.get('RETURN',True): #if RETURN==False print to console
-            return pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments'])#.transpose()
-
+        if kargs.get('RETURN',False): #if RETURN==False print to console
+            print(pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments']))#.transpose())
 
         else:                         #if RETURN==True
-            print(pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments']))#.transpose())
+            return pd.DataFrame.from_dict(dict_out, orient='index', columns=['value', 'comments'])#.transpose()
+
     #else:
         #return None
     return None
@@ -682,19 +677,27 @@ def medianstack(filelist, ext=0, **options):
 
 
     #check if elements in filelist is Image or string
-    allimages = [isinstance(i,Image) for i in filelist]
-    if all(allimages):
+
+    if all([isinstance(i,Image) for i in filelist]):
         imagesdata = [i.get_data() for i in filelist]
         im = filelist[0].copy()
-        im.filename = 'meanstack'
+        im.filename = 'medianstack'
         im.data=np.median(imagesdata, axis = 0)
         return im
-    allfiles = [isinstance(i,str) for i in filelist]
-    if all(allfiles):
+
+
+    if all([isinstance(i,str) for i in filelist]):
         #copy first image on list to get same dim
         imagesdata = [Image(i,ext).get_data() for i in filelist]
         im = Image(filelist[0],ext)
-        im.filename = 'meanstack'
+        im.filename = 'medianstack'
+        im.data=np.median(imagesdata, axis = 0)
+        return im
+    elif all([isinstance(i, Path) for i in filelist]):
+        #copy first image on list to get same dim
+        imagesdata = [Image(i,ext).get_data() for i in filelist]
+        im = Image(filelist[0],ext)
+        im.filename = 'medianstack'
         im.data=np.median(imagesdata, axis = 0)
         return im
 
@@ -731,16 +734,22 @@ def meanstack(filelist, ext=0, **options):
 
 
     #check if elements in filelist is Image or string
-    allimages = [isinstance(i,Image) for i in filelist]
-    if all(allimages):
+    if all([isinstance(i,Image) for i in filelist]):
         imagesdata = [i.get_data() for i in filelist]
         im = filelist[0].copy()
         im.filename = 'meanstack'
         im.data=np.mean(imagesdata, axis = 0)
         return im
     #check if filelist are files names
-    allfiles = [isinstance(i,str) for i in filelist]
-    if all(allfiles):
+
+    if all([isinstance(i,str) for i in filelist]):
+        #copy first image on list to get same dim
+        imagesdata = [Image(i,ext).get_data() for i in filelist]
+        im = Image(filelist[0],ext)
+        im.filename = 'meanstack'
+        im.data=np.mean(imagesdata, axis = 0)
+        return im
+    elif all([isinstance(i, Path) for i in filelist]):
         #copy first image on list to get same dim
         imagesdata = [Image(i,ext).get_data() for i in filelist]
         im = Image(filelist[0],ext)
@@ -779,16 +788,23 @@ def stdstack(filelist, ext=0, **options):
 
 
     #check if elements in filelist are Images or string
-    allimages = [isinstance(i,Image) for i in filelist]
-    if all(allimages):
+
+    if all([isinstance(i,Image) for i in filelist]):
         imagesdata = [i.get_data() for i in filelist]
         im = filelist[0].copy()
         im.filename = 'stdstack'
         im.data=np.std(imagesdata, axis = 0)
         return im
     #check if filelist are files names
-    allfiles = [isinstance(i,str) for i in filelist]
-    if all(allfiles):
+
+    if all([isinstance(i,str) for i in filelist]):
+        #copy first image on list to get same dim
+        imagesdata = [Image(i,ext).get_data() for i in filelist]
+        im = Image(filelist[0],ext)
+        im.filename = 'stdstack'
+        im.data=np.std(imagesdata, axis = 0)
+        return im
+    elif all([isinstance(i,Path) for i in filelist]):
         #copy first image on list to get same dim
         imagesdata = [Image(i,ext).get_data() for i in filelist]
         im = Image(filelist[0],ext)
