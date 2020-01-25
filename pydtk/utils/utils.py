@@ -326,19 +326,20 @@ def dfitsort(filefilter='*fits', filepath='.', FILTERLIST=None,  **kargs ):
     # if RETURN=True, return a Pandas dataframe or a dictionary if
     # PANDAS=False
         pass
-    if kargs.get('RETURN',True):
-        if kargs.get('PANDAS',True):
-            return pd.DataFrame.from_dict(output_dic, orient='index')#.transpose()
-        else:
-            return output_dic
-
-    else:
+    if kargs.get('RETURN',False):
         #TODO improve output format
         for key,value in output_dic.items():
             listval = [val for i,val in value.items()]
             listval.insert(0,key)
             listval_str = ' '.join(listval)
             print(listval_str)
+
+
+    else:
+        if kargs.get('PANDAS',False):
+            return pd.DataFrame.from_dict(output_dic, orient='index')#.transpose()
+        else:
+            return output_dic
 
 
 

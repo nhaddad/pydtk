@@ -110,15 +110,15 @@ def gain(imagelist, *coor, **kargs):
         return None
 
     #Check if bias have EXPTIME = 0.0 and FF EXPTIME > 0
-    testlist = []
-    testlist.append(b1.header['EXPTIME']==0.0)
-    testlist.append(b2.header['EXPTIME']==0.0)
-    testlist.append(ff1.header['EXPTIME']>0.0)
-    testlist.append(ff2.header['EXPTIME']>0.0)
+    #testlist = []
+    #testlist.append(b1.header['EXPTIME']==0.0)
+    #testlist.append(b2.header['EXPTIME']==0.0)
+    #testlist.append(ff1.header['EXPTIME']>0.0)
+    #testlist.append(ff2.header['EXPTIME']>0.0)
 
-    if not all(testlist):
-        print('Exposure times for at least one file are not correct')
-        return None
+    #if not all(testlist):
+    #    print('Exposure times for at least one file are not correct')
+    #    return None
 
 
     nwx = kargs.get('NWX', 10)  # set number of windows in x direction
