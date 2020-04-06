@@ -10,8 +10,8 @@ from setuptools import setup, find_packages
 
 setup(name='pydtk',
       version='0.1',
-      description='Detector Tool Kit',
-      url='http://github.com/storborg/funniest',
+      description='A python Detector Tool Kit',
+      url='https://github.com/nhaddad/pydtk',
       author='Nicolas Haddad',
       author_email='nhaddad@eso.org',
       license='MIT',

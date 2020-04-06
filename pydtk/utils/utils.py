@@ -83,29 +83,24 @@ def generate_fpn_col(**kargs):
     return fpnc #.reshape(ncols,1)
 
 
-
-
-def infofits(filepath, **kargs):
+def infofits(filefilter='*fits', filepath='.', **kargs):
     '''
     Syntax:
     infofits('filename.fits')
-        infofits('filename.fits', RETURN=True)
-
-    This function returns information of extensions in a FITS file
-    fits.info
-
-
+    This function returns:
+    pandas data frame or dictionary if filefilter selects more than 1 files
+    If filefilter selects more than one file, it will return by default a
+    pandas dataframe with the information of all the files.
+    If you prefer a dictionary, then set kargs PANDAS=False.
+    The default file path is the current directory ('.'), but this
+    can be modified.
     Example:
     infofits('FORS2_IMG_CAL099.80.CHIP1.fits') which gives, for this file
-
     Filename: FORS2_IMG_CAL099.80.CHIP1.fits
     No.    Name         Type      Cards   Dimensions   Format
     0    CHIP1       PrimaryHDU     242   (2048, 1034)   int16
-
     For an OmegaCAM image we get
-
     infofits('OMEGACAM_IMG_FLAT120_0020.fits')
-
     Filename: OMEGACAM_IMG_FLAT120_0020.fits
     No.    Name         Type      Cards   Dimensions   Format
     0    PRIMARY     PrimaryHDU     612   ()
@@ -116,9 +111,15 @@ def infofits(filepath, **kargs):
     5    ESO_CCD_#73  ImageHDU        52   (2144, 4200)   int16 (rescales to uint16)
     6    ESO_CCD_#74  ImageHDU        52   (2144, 4200)   int16 (rescales to uint16)
     ....etc (32 CCDs)
-
+    The above two cases we were interrogating for a specific file, if we like to check
+    for many files we must assign to a pandas dataframe or dictionary:
+    df = infofits('*BLUE*fits')  to get a Pandas dataframe for all fits files that
+    have BLUE in the name.
+    If you rather have a dictionary, use:
+    dict = infofits('*BLUE*fits', PANDAS=False)
 
     '''
+
     if Path(filepath).is_file():
         if kargs.get('RETURN',False):
             return pyfits.info(filepath, output=False)
@@ -126,7 +127,44 @@ def infofits(filepath, **kargs):
             pyfits.info(filepath)
 
     else:
-        print(f'File "{filepath}" not exist')
+        path = Path(filepath)
+        filelist = list(path.glob(filefilter))
+        #filelist = glob.glob(filefilter)
+        if len(filelist)==0:
+            print('No files found..')
+            return None
+
+        elif len(filelist)==1:
+            pyfits.info(filelist[0])
+            return None
+
+        output_dic = {}
+        for filename in filelist:
+            try:
+                #print filename
+
+                dic_aux = {}
+                info = pyfits.info(filename, output=False)
+                for tup in info:
+                    dic_aux.update({tup[0]:[
+                                    tup[1],
+                                    tup[3],
+                                    tup[4],
+                                    tup[5]]})
+
+
+
+            except:
+                print(f"Error opening {filename} or wrong extension")
+                pass
+
+            output_dic.update({filename:dic_aux})
+        if kargs.get('PANDAS',True):
+            return pd.DataFrame.from_dict(output_dic, orient='index')
+        else:
+            return output_dic
+
+
 
 def get_ext_list(filename, substr):
     '''
