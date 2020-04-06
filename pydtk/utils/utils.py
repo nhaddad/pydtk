@@ -83,7 +83,7 @@ def generate_fpn_col(**kargs):
     return fpnc #.reshape(ncols,1)
 
 
-def infofits(filefilter='*fits', filepath='.', **kargs):
+def infofits(filepath='.',filefilter='*fits', **kargs):
     '''
     Syntax:
     infofits('filename.fits')
