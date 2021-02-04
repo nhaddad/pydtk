@@ -14,6 +14,7 @@ from pydtk.utils.utilsfunc import subwindowcoor
 from pydtk.utils.utils import medianstack
 from pydtk.utils.utils import meanstack
 from pathlib import Path
+from astropy.stats import sigma_clip
 
 
 def ImageIter(imagelist, **kargs):
@@ -70,6 +71,7 @@ def gain(imagelist, *coor, **kargs):
     SAVE=True/False => if True, it saves the graph in pnp format
     RETURN=True/False => if True, return only ConFAc without plots
     MEDIAN=True/False => default True, computes median instead of mean
+    NORMFF2=True/False => default False, normalize FF2 level to set its mean level equal to FF1
     RATIO=True/FALSE => defaul True. just change the way the FPN is elliminated. Both
     methods give almost the same rusults
     NWX= number of windows in X direction (default 10)
@@ -135,10 +137,17 @@ def gain(imagelist, *coor, **kargs):
 
     dbiasff1 = ff1 - b1  # debiased FF1
     dbiasff2 = ff2 - b2  # debiased FF2
-    meanff2 = dbiasff2.mean()  # mean signal on FF2 debiased
-    meanff1 = dbiasff1.mean()  # mean signal on FF1 debiased
-    ratio = meanff1/meanff2
-    # print(ratio)
+    #meanff2 = dbiasff2.mean()  # mean signal on FF2 debiased
+    #meanff1 = dbiasff1.mean()  # mean signal on FF1 debiased
+    meanff2 = dbiasff2.median()  # mean signal on FF2 debiased
+    meanff1 = dbiasff1.median()  # mean signal on FF1 debiased
+    if kargs.get('NORMFF2', False):
+        ratio = meanff1/meanff2  
+    else:
+        ratio = 1.0
+
+    
+
 
     if kargs.get('VERBOSE', False):
         print(f'format images X={b1.shape[0]} pix Y={b1.shape[1]} pix')
@@ -192,7 +201,8 @@ def gain(imagelist, *coor, **kargs):
 
     # Check if run as ROUTINE, in that case return only the Conversion Factor and don't continue with plotting
     if kargs.get('RETURN', False):
-        return x1, x2, y1, y2, ConFac, RONe, meanff2
+        return ConFac, RONe, np.mean(meansig, axis=None),np.median(meansig, axis=None), \
+            np.mean(stdsig, axis=None)**2,np.median(stdsig, axis=None)**2,x1, x2, y1, y2 
     else:
         plt.figure()
 
@@ -435,6 +445,7 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
     FACTOR (default = 2.0)
     MAXSIGNAL (default 65535)  => compute PTC only for signal values less than MAXSIGNAL
     VERBOSE (default=False)  ==> print out table with signal and variance
+    CLIP (default=True) ==> Use clipped statistic to on images before computing CF
 
     """
 
@@ -444,6 +455,7 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
 
     MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
     VERBOSE = kargs.get('VERBOSE', False)
+    sigma = kargs.get('NSTD', 3)
     ext = kargs.get('ext', 0)
 
     # read coordinates of first image
@@ -475,8 +487,13 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
 
     shotnoise = [(image1 - image2) for image1, image2 in zip(ff1d, ff2d)]
 
-    signal = [image.mean() for image in ff1d]  # ffmean]
+    if kargs.get('CLIP', True):
+        ffmean = [sigma_clip(np.array(ff.data, dtype=float), sigma=sigma, maxiters=5) for ff in ffmean]
+        shotnoise = [sigma_clip(np.array(shotimage.data, dtype=float), sigma=sigma, maxiters=5) for shotimage in shotnoise]
+
+    signal = [image.mean() for image in ffmean] #ff1d]  # ffmean]
     variance = [image.var()/2.0 for image in shotnoise]
+
 
     # Need to sort both signal and variance according to list containing mean signal
     zipped = zip(signal, variance)
@@ -513,6 +530,7 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
     # figure()
     ax.plot(signal, variance, 'b.')
     ax.plot(signal, variance_fitted, 'r-')
+    plt.show()
 
     cf = 1/coefts[0]
 
@@ -524,6 +542,11 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
         cf = 1/coefts[1]
         print(
             f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * bias_dif.std()/np.sqrt(2.0):2.3f} -e')
+
+    if kargs.get('RETURN', True):
+        return cf, cf * bias_dif.std()/np.sqrt(2.0)
+    
+
 
 
 def ron_adu(b1, b2, *coor, **kargs):
