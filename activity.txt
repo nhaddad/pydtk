@@ -1,0 +1,9 @@
+commited changes to ptc module
+pushed to https://github.com/nhaddad/pydtk.git
+create dev branch
+changed to dev
+worked on ptc.gain() simplified, corrected according to Simon formula
+ptc_ffpairs() modified and simplified according to Simon's formulae. Also sigma_clip used
+Implementing ptc/ptc_ffpairs_mw() to compute mean and var in multiple windows
+Improved ptc/ptc_2ff, this works with many ff images at different levels
+Create ptc/ptc_2ff2bias this uses only 2 FF which have many light levels ()

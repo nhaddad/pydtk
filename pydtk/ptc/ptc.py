@@ -77,10 +77,12 @@ def gain(imagelist, *coor, **kargs):
     NWX= number of windows in X direction (default 10)
     NWY= number of windows in Y direction (default 10)
     EXT=image extension to load, default 0
+    SIGMA = std deviation used by sigma_clip, default=3
 
 
     """
     ext = kargs.get('ext', 0)
+    sigma = kargs.get('SIGMA', 3)
 
     if len(imagelist) != 4:
         print('imagelist len different from 4')
@@ -111,93 +113,80 @@ def gain(imagelist, *coor, **kargs):
         print("Not all objects in image list are Images or filenames")
         return None
 
-    #Check if bias have EXPTIME = 0.0 and FF EXPTIME > 0
-    #testlist = []
-    #testlist.append(b1.header['EXPTIME']==0.0)
-    #testlist.append(b2.header['EXPTIME']==0.0)
-    #testlist.append(ff1.header['EXPTIME']>0.0)
-    #testlist.append(ff2.header['EXPTIME']>0.0)
+    x1 = coor[0]
+    x2 = coor[1]
+    y1 = coor[2]
+    y2 = coor[3]
 
-    #if not all(testlist):
-    #    print('Exposure times for at least one file are not correct')
-    #    return None
+    b1 = b1.get_data()
+    b2 = b2.get_data()
+    ff1 = ff1.get_data()
+    ff2 = ff2.get_data()
+
 
 
     nwx = kargs.get('NWX', 10)  # set number of windows in x direction
     nwy = kargs.get('NWY', 10)  # set number of windows in y direction
 
-    x1, x2, y1, y2 = b1.get_windowcoor(*coor)
-    # print(x1,x2,y1,y2)
 
-    # now work with cropped images, where the signal is more or less flat....
-    b1 = b1.crop(x1, x2, y1, y2)
-    b2 = b2.crop(x1, x2, y1, y2)
-    ff1 = ff1.crop(x1, x2, y1, y2)
-    ff2 = ff2.crop(x1, x2, y1, y2)
-
-    dbiasff1 = ff1 - b1  # debiased FF1
-    dbiasff2 = ff2 - b2  # debiased FF2
-    #meanff2 = dbiasff2.mean()  # mean signal on FF2 debiased
-    #meanff1 = dbiasff1.mean()  # mean signal on FF1 debiased
-    meanff2 = dbiasff2.median()  # mean signal on FF2 debiased
-    meanff1 = dbiasff1.median()  # mean signal on FF1 debiased
-    if kargs.get('NORMFF2', False):
-        ratio = meanff1/meanff2  
-    else:
-        ratio = 1.0
-
-    
 
 
     if kargs.get('VERBOSE', False):
         print(f'format images X={b1.shape[0]} pix Y={b1.shape[1]} pix')
         print(f'Nx:{nwx} Ny:{nwy} X1:{x1} X2:{x2} Y1:{y1} Y2:{y2} WX:{(x2-x1)//nwx} WY:{(y2-y1)//nwy}')
         print('')
-        print(f'meanff2 ={meanff2}')
 
-    dbiasff2 = dbiasff2*ratio
-    dbias_ff_diff = dbiasff1 - dbiasff2
-    dbias_ff_sig = (dbiasff1 + dbiasff2)/2.0
 
-    # compute difference of 2 bias to get the RON
-    dbias = b1 - b2
+
 
     # generate auxiliary arrays of nwx * nwy elements and initialize to zero
     meansig = np.zeros((nwx, nwy))
-    stdff = np.zeros((nwx, nwy))
+
     stdbias = np.zeros((nwx, nwy))
     cf = np.zeros((nwx, nwy))
-    signal = (dbiasff1 / dbiasff2)
+
     stdsig = np.zeros((nwx, nwy))
 
     # windows is a generator of subwindows
-    windows = subwindowcoor(0, b1.shape[0], 0, b1.shape[1], **kargs)
+    windows = subwindowcoor(x1, x2, y1, y2, **kargs)
     for i, j, xi, xf, yi, yf in windows:
+        win = slice(xi,xf),slice(yi,yf)
         # compute mean value on each window for normalized ff
-        meansig[i, j] = np.mean(dbias_ff_sig[xi:xf, yi:yf])
+        meansig[i, j] = sigma_clip((ff1[win]+ff2[win])/2.0).mean()-sigma_clip((b1[win]+b2[win])/2.0).mean()
+
         # compute standard deviation on each window for normalized ff
-        stdsig[i, j] = np.std(dbias_ff_diff[xi:xf, yi:yf])/np.sqrt(2.0)
-        cf[i, j] = meansig[i, j] / (stdsig[i, j]**2)  # compute CF for each window
+        if kargs.get('NORMFF2', False):
+            ff_diff = ff1[win]-ff2[win]*(sigma_clip(ff1[win]).mean()/sigma_clip(ff2[win]).mean())
+        else:
+            ff_diff = ff1[win]-ff2[win]
+        var_ff_diff = sigma_clip(ff_diff).std()**2
+        # Measure RON from difference of two bias
+        var_ron = (sigma_clip(b1[win]-b2[win]).std()**2)/2.0
+        stdsig[i, j] = (var_ff_diff- 2*var_ron)
+        cf[i, j] = 2*meansig[i, j] / stdsig[i, j]  # compute CF for each window
         # compute standard deviation for each window of bias difference
-        stdbias[i, j] = np.std(dbias[xi:xf, yi:yf])/np.sqrt(2.0)
+        stdbias[i, j] = np.sqrt(var_ron)
 
         if kargs.get('VERBOSE', False):
             print(
                 f"X({xi+x1},{xf+x1}) Y({yi+y1},{yf+y2}) Mean:{meansig[i, j]:.2f} stdff:{stdsig[i, j]:.2f}  CF:{cf[i, j]:.2f}")
 
-    if kargs.get('MEDIAN', True):
+    if kargs.get('MEDIAN', False):
         ConFac = np.median(cf, axis=None)
-        RON = np.median(stdbias, axis=None)
+        RON = np.median(stdbias, axis=None) 
+
 
     else:
-        ConFac = np.mean(cf, axis=None)
-        RON = np.mean(stdbias, axis=None)  # RON in ADUs
+        ConFac = sigma_clip(cf, sigma=sigma).mean()
+        RON = sigma_clip(stdbias,sigma=sigma).mean()
+    
 
     # RON =  RMS / sqrt(2)    #RON in ADUs
     RONe = RON * ConFac     # RON in electrons
 
     # Error in CF estimation is the std/sqrt(number of windows)
-    CFstd = np.std(cf, axis=None)/np.sqrt(nwx*nwy)
+    #CFstd = np.std(cf, axis=None)/np.sqrt(nwx*nwy)
+    CFstd = sigma_clip(cf).std()  #np.std(cf, axis=None)/np.sqrt(nwx*nwy)
 
     # Check if run as ROUTINE, in that case return only the Conversion Factor and don't continue with plotting
     if kargs.get('RETURN', False):
@@ -454,49 +443,54 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
         order = 2
 
     MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
-    VERBOSE = kargs.get('VERBOSE', False)
-    sigma = kargs.get('NSTD', 3)
+    sigma = kargs.get('SIGMA', 3)
     ext = kargs.get('ext', 0)
 
-    # read coordinates of first image
-    x1, x2, y1, y2 = Image(imagelist[0], ext).get_windowcoor(*coor)
+    x1 = coor[0]
+    x2 = coor[1]
+    y1 = coor[2]
+    y2 = coor[3]
+
+
 
     oddimageindex = list(range(3, len(imagelist), 2))
     evenimageindex = list(range(2, len(imagelist), 2))
 
     # Read in bias1 and bias2
-    bias1 = Image(imagelist[0], ext).crop(x1, x2, y1, y2)
-    bias2 = Image(imagelist[1], ext).crop(x1, x2, y1, y2)
+    bias1 = Image(imagelist[0], ext).crop(x1, x2, y1, y2).get_data()
+    bias2 = Image(imagelist[1], ext).crop(x1, x2, y1, y2).get_data()
 
-    bias_dif = bias2 - bias1
-    # mask out all pixels with value greater or lower than  3*std
-    bias_dif.mask()
+    biasRON = (sigma_clip(bias2 - bias1).std())/np.sqrt(2)
+    if kargs.get('DEBUG', False):
+        print(f'biasRON {biasRON}')
+    bias_mean = sigma_clip((bias1 + bias2)/2.0).mean()
+    if kargs.get('DEBUG', False):
+        print(f'Bias mean: {bias_mean}')
+
+
 
     # Separate images in even and odd (crop the images..)
-    ff1 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2) for i in oddimageindex]
-    ff2 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2) for i in evenimageindex]
+    ff1 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2).get_data() for i in oddimageindex]
+    ff2 = [Image(imagelist[i], ext).crop(x1, x2, y1, y2).get_data() for i in evenimageindex]
 
-    # remove bias from both ff images
-    ff1d = [(image - bias1) for image in ff1]
-    ff2d = [(image - bias2) for image in ff2]
+    factor = [sigma_clip(image1/image2).mean() for image1, image2 in zip(ff1,ff2)]
+    if kargs.get('DEBUG', False):
+        print(f'Factors: {factor}')
+    ff2 = [image2*factor for factor, image2 in zip(factor, ff2)]
 
-    if kargs.get('USE_FFMEAN', False):
-        ffmean = [(image1/image2)*image2.mean() for image1, image2 in zip(ff1d, ff2d)]
-    else:
-        ffmean = [(image1+image2)/2.0 for image1, image2 in zip(ff1d, ff2d)]
 
-    shotnoise = [(image1 - image2) for image1, image2 in zip(ff1d, ff2d)]
 
-    if kargs.get('CLIP', True):
-        ffmean = [sigma_clip(np.array(ff.data, dtype=float), sigma=sigma, maxiters=5) for ff in ffmean]
-        shotnoise = [sigma_clip(np.array(shotimage.data, dtype=float), sigma=sigma, maxiters=5) for shotimage in shotnoise]
+    signal_mean = [sigma_clip((image1+image2)/2.0).mean()-bias_mean for image1, image2 in zip(ff1, ff2)]
 
-    signal = [image.mean() for image in ffmean] #ff1d]  # ffmean]
-    variance = [image.var()/2.0 for image in shotnoise]
+
+
+    variance = [sigma_clip(image1 - image2, sigma=sigma).std()**2 for image1, image2 in zip(ff1, ff2)]
+    Truevariance = [ 0.5*(var-2*biasRON**2) for var in variance]
+
 
 
     # Need to sort both signal and variance according to list containing mean signal
-    zipped = zip(signal, variance)
+    zipped = zip(signal_mean, Truevariance)
     zipped_sorted = sorted(zipped)
 
     # remove signal,variance pairs where signal is above MAXSIGNAL
@@ -506,9 +500,9 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
     signal, variance = zip(*zipped_sorted)
 
     if kargs.get('VERBOSE', False):
-        print('Mean signal    Variance')
+        print('Mean signal\tVariance\tCF')
         for s, v in zip(signal, variance):
-            print(f' {s:6.1f}   {v:6.1f}')
+            print(f'{s:6.1f}\t\t{v:6.1f}\t\t{s/v:2.3f}')
 
     # compute polynomial coeficients
     coefts = np.polyfit(signal, variance, order)
@@ -537,14 +531,118 @@ def ptc_ffpairs(imagelist, *coor, **kargs):
     if order == 1:
         cf = 1/coefts[0]
         print(
-            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * bias_dif.std()/np.sqrt(2.0):2.3f}')
+            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * biasRON:2.3f}')
     elif order == 2:
         cf = 1/coefts[1]
         print(
-            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * bias_dif.std()/np.sqrt(2.0):2.3f} -e')
+            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * biasRON:2.3f} -e')
 
     if kargs.get('RETURN', True):
-        return cf, cf * bias_dif.std()/np.sqrt(2.0)
+        return cf, cf * biasRON, coefts
+    
+
+def ptc_ffpairs_mw(imagelist, *coor, **kargs):
+    """
+    Perform ptc plot for pairs of ff at same level in multiple windows.
+    The pairs of ff should have the same light level.
+    The first 2 images in the list must be bias
+    To eliminate the FPN, the 'shotnoise' image is computed as the subtraction
+    of two debiased flat field images
+    optional kargs arguments:
+    FACTOR (default = 2.0)
+    MAXSIGNAL (default 65535)  => compute PTC only for signal values less than MAXSIGNAL
+    VERBOSE (default=False)  ==> print out table with signal and variance
+    CLIP (default=True) ==> Use clipped statistic to on images before computing CF
+
+    """
+
+    order = kargs.get('ORDER', 2)  # order of polynomial regression
+    if order > 2:
+        order = 2
+
+    MAXSIGNAL = kargs.get('MAXSIGNAL', 65535.0)
+    sigma = kargs.get('SIGMA', 3)
+    ext = kargs.get('ext', 0)
+
+    x1 = coor[0]
+    x2 = coor[1]
+    y1 = coor[2]
+    y2 = coor[3]
+
+
+
+    oddimageindex = list(range(3, len(imagelist), 2))
+    evenimageindex = list(range(2, len(imagelist), 2))
+
+    # Read in bias1 and bias2
+    b1 = Image(imagelist[0], ext).crop(x1, x2, y1, y2).get_data()
+    b2 = Image(imagelist[1], ext).crop(x1, x2, y1, y2).get_data()
+
+    biasRON = sigma_clip(b1-b2).std()/np.sqrt(2.0)
+
+
+    # Separate images in even and odd (crop the images..)
+    ff1list = [Image(imagelist[i], ext).crop(x1, x2, y1, y2).get_data() for i in oddimageindex]
+    ff2list = [Image(imagelist[i], ext).crop(x1, x2, y1, y2).get_data() for i in evenimageindex]
+
+
+
+    # NHA new implementation with multi windows START
+    # generate auxiliary arrays of nwx * nwy elements and initialize to zero
+
+
+    meanff = []
+    signalvar = []
+    
+    for ff1, ff2 in zip(ff1list,ff2list):
+        # windows is a generator of subwindows
+        windows = subwindowcoor(0, ff1.shape[0], 0, ff2.shape[0], **kargs)
+        for i, j, xi, xf, yi, yf in windows:
+            win = slice(xi,xf),slice(yi,yf)
+            # compute mean value on each window for normalized ff
+            meanff.append(sigma_clip((ff1[win]+ff2[win])/2.0, sigma=sigma).mean()-sigma_clip((b1[win]+b2[win])/2.0, sigma=sigma).mean())
+            # compute standard deviation on each window for normalized ff
+            if kargs.get('NORMFF2', True):
+                ff_diff = ff1[win]-ff2[win]*(sigma_clip(ff1[win], sigma=sigma).mean()/sigma_clip(ff2[win]).mean())
+            else:
+                ff_diff = ff1[win]-ff2[win]
+            var_ff_diff = sigma_clip(ff_diff, sigma=sigma).std()**2
+            # Measure RON from difference of two bias
+            var_ron = (sigma_clip(b1[win]-b2[win], sigma=sigma).std()**2)/2.0
+            signalvar.append(0.5*(var_ff_diff- 2*var_ron))
+    
+    # compute polynomial coeficients
+    meanff = np.array(meanff)
+    signalvar = np.array(signalvar)
+    coefts = np.polyfit(meanff, signalvar, order)
+    polyts = np.poly1d(coefts)
+    variance_fitted = np.polyval(polyts, meanff)
+
+    fig = plt.figure()  # create a figure object
+    ax = fig.add_subplot(1, 1, 1)  # create an axes object in the figure
+
+    ax.set_ylabel('Variance')
+    ax.set_xlabel('Signal')
+    ax.grid(True)
+    ax.set_title('Photon Transfer Curve')
+
+    # plot variance v/s signal
+    # figure()
+    ax.plot(meanff, signalvar, 'b.')
+    ax.plot(meanff, variance_fitted, 'r-')
+    plt.show()
+
+    if order == 1:
+        cf = 1/coefts[0]
+        print(
+            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * biasRON:2.3f}')
+    elif order == 2:
+        cf = 1/coefts[1]
+        print(
+            f'Extension: {ext}   CF = {cf:2.3f} -e/ADU   RON = {cf * biasRON:2.3f} -e')
+
+    if kargs.get('RETURN', True):
+        return meanff, signalvar
     
 
 
@@ -791,9 +889,9 @@ def ptc_2tdi(bias, tdi1, tdi2, *coor, **kargs):
         ax2.set_xlabel('Signal [ADU]')
 
 
-def ptc_2ff(bias, ff1, ff2, *coor, **kargs):
+def ptc_2ff2bias(bias1, bias2, ff1, ff2, *coor, **kargs):
     """
-    Perform ptc plot with one bias and 2 tdi images.
+    Perform ptc plot with two bias and 2 ff images which have many .
     ex:
     ptc_2tdi(b1,tdi1,tdi2,50, 2000, 100, 170)
     compute CF using 2 bias and 2 FF in an area defined by [50:2000,100:170] plot the ptc curve and compute the CF using
@@ -818,74 +916,59 @@ def ptc_2ff(bias, ff1, ff2, *coor, **kargs):
     This method can be used on the TestBench
     """
 
-    nstd = kargs.get('NSTD', 3)  # factor to elliminate outlayers
+    nstd = kargs.get('SIGMA', 3)  # factor to elliminate outlayers
     order = kargs.get('ORDER', 2)
-    axis = kargs.get('AXIS', 1)  # columns
+    axis = kargs.get('AXIS', 1)  # make computation along columns
+    ext = kargs.get('ext',0)
 
-    #dbiasff1, dbiasff2 = correctTDIShift(bias, tdi1, tdi2)
-    dbiasff1 = ff1 - bias
-    dbiasff2 = ff2 - bias
+    x1 = coor[0]
+    x2 = coor[1]
+    y1 = coor[2]
+    y2 = coor[3]
 
-    x1, x2, y1, y2 = dbiasff1.get_windowcoor(*coor)
+    ff1w = Image(ff1, ext=ext).crop(x1,x2,y1,y2).astype(float)
+    ff2w = Image(ff2, ext=ext).crop(x1,x2,y1,y2).astype(float)  
+    bias1w = Image(bias1, ext=ext).crop(x1,x2,y1,y2).astype(float)
+    bias2w = Image(bias2, ext=ext).crop(x1,x2,y1,y2).astype(float)  
 
-    dbiasff1 = dbiasff1.crop(x1, x2, y1, y2)
-    dbiasff2 = dbiasff2.crop(x1, x2, y1, y2)
-    # b1 = b1.crop(x1, x2, y1, y2)
 
-    # dbiasff1 = ff1-b1  # debiased FF1
-    # dbiasff2 = ff2-b1  # debiased FF2
-    signal = (dbiasff1+dbiasff2)/2.0  # mean signal
-    shotnoise = dbiasff1-dbiasff2
 
-    orig_signal = signal.mean(RETURN=True, AXIS=1)
-    orig_var = shotnoise.var(RETURN=True, AXIS=1)/2.0
+    bias_mean = sigma_clip(bias1w+bias2w, axis=axis).mean(axis=axis)/2.0
+    bias_var = 0.5 * sigma_clip(bias1w-bias2w, axis=axis).std(axis=axis)**2
+    signal_mean = sigma_clip(ff1w+ff2w, axis=axis).mean(axis=axis)/2.0 - bias_mean
+    ratioffs = sigma_clip(ff1w, axis=axis).mean(axis=axis)/sigma_clip(ff2w, axis=axis).mean(axis=axis)
+    total_var = sigma_clip(ff1w-ratioffs*ff2w, axis=axis).std(axis=axis)**2
+    signal_var = (total_var-2*bias_var)/2.0
 
-    # Shot Noise data
-    shotnoisedata = shotnoise.get_data()
-    # Compute Z score
-    zsco = stats.zscore(shotnoisedata, axis=1, ddof=1)
-    # Create mask for values outside +3/-3 std
-    snarray_mask = np.ma.masked_outside(zsco, -1.0*nstd, nstd)
-    sn_masked = np.ma.masked_where(np.ma.getmask(snarray_mask), shotnoise.get_data())
-    shotnoise.data = sn_masked
 
-    signalmean = signal.mean(RETURN=True, AXIS=axis)
-    variance = shotnoise.var(RETURN=True, AXIS=axis)/2.0
-    cf = signalmean/variance
-
-    # fit line using all data (later we eliminate wrong values by masking )
-    coefts = np.polyfit(signalmean, variance, order)
+    coefts = np.polyfit(signal_mean, signal_var, order)
     polycoef = np.poly1d(coefts)
-    var_fitted = np.polyval(polycoef, signalmean[:])
+    var_fitted = np.polyval(polycoef, signal_mean[:])
+
 
     # if RETURN equal True, return signal_masked, variance masked, fitted variance and CF
     if kargs.get('RETURN', False):
         if order == 1:
-            return signalmean, variance, var_fitted, (1/coefts[0])
+            return signal_mean, signal_var, var_fitted, coefts
         else:
-            return signalmean, variance, var_fitted, (1/coefts[1])
+            return signal_mean, signal_var, var_fitted, coefts
 
     else:
-        f, (ax1, ax2) = plt.subplots(1, 2, sharey=False, figsize=(10, 5))
-        # plot variance vs signal without masking yet
-        # ax1.plot(orig_signal, orig_var, '.b')
-        ax1.plot(signalmean, cf, '.b')
-        ax1.grid()
-        ax1.set_title('Photon Transfer Curve')
-        ax1.set_ylabel('Variance [ADU]**2')
-        ax1.set_xlabel('Signal [ADU]')
+        fig = plt.figure()  # create a figure object
+        ax = fig.add_subplot(1, 1, 1)  # create an axes object in the figure
 
-        # plot variance vs signal WITH masking
-        ax2.plot(signalmean, variance, '.b', signalmean, var_fitted, 'r')
-        ax2.grid()
+
+        ax.plot(signal_mean, signal_var, '.b', signal_mean, var_fitted, 'r')
+        ax.grid()
         title = 'PTC  CF=%f'
         if order == 2:
             title = title % (1/coefts[1])
         else:
             title = title % (1/coefts[0])
-        ax2.set_title(title)
-        ax2.set_ylabel('Variance [ADU]**2')
-        ax2.set_xlabel('Signal [ADU]')
+        ax.set_title(title)
+        ax.set_ylabel('Variance [ADU]**2')
+        ax.set_xlabel('Signal [ADU]')
+
 
 
 def ptc_pixels(biaslist, fflist, ext=0, *coor, **kargs):
