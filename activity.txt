@@ -1,3 +1,29 @@
+June 15, 2021
+On ~/SoftDev/working_pydtk/pydtk merged dev and master
+All changes pushed to github 
+Created a new module pydtk on gitlab from ESO
+Setup github such that when pushing it will push to both repo at the same time (git push all)
+(base) nhaddad@ma021000:~/SoftDev/working_pydtk/pydtk$ git remote -v
+all	https://gitlab.eso.org/nhaddad/pydtk.git (fetch)
+all	https://gitlab.eso.org/nhaddad/pydtk.git (push)
+all	https://github.com/nhaddad/pydtk.git (push)
+github	https://github.com/nhaddad/pydtk.git (fetch)
+github	https://github.com/nhaddad/pydtk.git (push)
+gitlab	https://gitlab.eso.org/nhaddad/pydtk.git (fetch)
+gitlab	https://gitlab.eso.org/nhaddad/pydtk.git (push)
+
+Below the commands to create a new remote with name 'all' 
+git remote set-url --add --push all https://gitlab.eso.org/nhaddad/pydtk.git
+git remote set-url --add --push all https://github.com/nhaddad/pydtk.git
+
+local branch dev deleted
+
+
+
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 commited changes to ptc module
 pushed to https://github.com/nhaddad/pydtk.git
 create dev branch
